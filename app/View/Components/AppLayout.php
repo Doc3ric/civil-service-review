@@ -1,0 +1,24 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\View\Components;
+
+use Illuminate\View\Component;
+use Illuminate\View\View;
+
+class AppLayout extends Component
+{
+    public function __construct(
+        public ?string $title = null,
+        public ?string $header = null
+    ) {}
+
+    public function render(): View
+    {
+        return view('layouts.app', [
+            'title' => $this->title,
+            'header' => $this->header,
+        ]);
+    }
+}
