@@ -40,7 +40,8 @@ import {
     FileSpreadsheet,
     FileText,
     Percent,
-    Target
+    Target,
+    Image
 } from 'lucide';
 
 window.Chart = Chart;
@@ -85,26 +86,42 @@ const appIcons = {
     FileSpreadsheet,
     FileText,
     Percent,
-    Target
+    Target,
+    Image
 };
 
 window.lucide = {
     createIcons: () => createIcons({ icons: appIcons })
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    window.lucide.createIcons();
-});
+const initIcons = () => {
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
+};
 
-document.addEventListener('livewire:navigated', () => {
-    window.lucide.createIcons();
-});
+document.addEventListener('DOMContentLoaded', initIcons);
+document.addEventListener('livewire:navigated', initIcons);
 
-// Re-init icons when Livewire component updates
+// Ensure icons re-render on any Livewire update / morph
+const setupLivewireHooks = () => {
+    if (window.Livewire) {
+        initIcons();
+        window.Livewire.hook('commit', ({ succeed }) => {
+            succeed(() => {
+                queueMicrotask(initIcons);
+                setTimeout(initIcons, 50);
+            });
+        });
+        window.Livewire.hook('morph.updated', () => {
+            queueMicrotask(initIcons);
+        });
+    }
+};
+
+document.addEventListener('livewire:init', setupLivewireHooks);
+
+// Fallback in case livewire:init fired before script ran
 if (window.Livewire) {
-    window.Livewire.hook('commit', () => {
-        setTimeout(() => {
-            window.lucide.createIcons();
-        }, 50);
-    });
+    setupLivewireHooks();
 }

@@ -41,6 +41,14 @@ class ExamCategory extends Model
     }
 
     /**
+     * @return HasMany<QuestionTopic, $this>
+     */
+    public function topics(): HasMany
+    {
+        return $this->hasMany(QuestionTopic::class, 'category_id')->orderBy('name');
+    }
+
+    /**
      * @return HasMany<ExamBlueprintCategory, $this>
      */
     public function blueprintCategories(): HasMany

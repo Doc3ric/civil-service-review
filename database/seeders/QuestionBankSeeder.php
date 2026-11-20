@@ -10,6 +10,7 @@ use App\Enums\QuestionStatus;
 use App\Models\ExamCategory;
 use App\Models\Question;
 use App\Models\QuestionChoice;
+use App\Models\QuestionTopic;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -22,24 +23,35 @@ class QuestionBankSeeder extends Seeder
         $numerical = ExamCategory::where('code', CategoryCode::Numerical->value)->firstOrFail();
         $general = ExamCategory::where('code', CategoryCode::General->value)->firstOrFail();
 
-        $questionsData = $this->getQuestionsData($verbal->id, $analytical->id, $numerical->id, $general->id);
+        $verbalTopics = QuestionTopic::where('category_id', $verbal->id)->pluck('id', 'name')->all();
+        $questionsData = $this->getQuestionsData($verbal->id, $analytical->id, $numerical->id, $general->id, $verbalTopics);
 
         DB::transaction(function () use ($questionsData) {
             foreach ($questionsData as $item) {
                 $hash = Question::normalizeHash($item['question']);
 
-                $question = Question::updateOrCreate(
-                    ['content_hash' => $hash],
-                    [
-                        'category_id' => $item['category_id'],
-                        'question_text' => $item['question'],
-                        'correct_choice' => $item['correct'],
-                        'explanation' => $item['explanation'],
-                        'difficulty' => $item['difficulty'],
-                        'source' => $item['source'] ?? 'Civil Service Review 2027 Official Question Bank',
-                        'status' => QuestionStatus::Published->value,
-                    ]
-                );
+                $questionData = [
+                    'category_id' => $item['category_id'],
+                    'origin' => 'sample',
+                    'question_text' => $item['question'],
+                    'correct_choice' => $item['correct'],
+                    'explanation' => $item['explanation'],
+                    'difficulty' => $item['difficulty'],
+                    'source' => $item['source'] ?? 'Civil Service Review 2027 Official Question Bank',
+                    'status' => QuestionStatus::Published->value,
+                ];
+                if (isset($item['topic_id'])) {
+                    $questionData['topic_id'] = $item['topic_id'];
+                }
+
+                $question = Question::where('content_hash', $hash)->first();
+                if ($question === null) {
+                    $question = Question::onlyTrashed()->where('content_hash', $hash)->first();
+                    $question?->restore();
+                }
+                $question ??= new Question();
+                $question->fill($questionData + ['content_hash' => $hash]);
+                $question->save();
 
                 $choices = [
                     'A' => $item['a'],
@@ -65,6 +77,7 @@ class QuestionBankSeeder extends Seeder
     }
 
     /**
+     * @param array<string, int> $verbalTopics
      * @return array<int, array{
      *     category_id: int,
      *     question: string,
@@ -75,10 +88,11 @@ class QuestionBankSeeder extends Seeder
      *     correct: string,
      *     explanation: string,
      *     difficulty: string,
+     *     topic_id?: int,
      *     source?: string
      * }>
      */
-    private function getQuestionsData(int $verbalId, int $analyticalId, int $numericalId, int $generalId): array
+    private function getQuestionsData(int $verbalId, int $analyticalId, int $numericalId, int $generalId, array $verbalTopics): array
     {
         $data = [];
 
@@ -181,6 +195,7 @@ class QuestionBankSeeder extends Seeder
         foreach ($verbalQuestions as $q) {
             $data[] = [
                 'category_id' => $verbalId,
+                'topic_id' => $verbalTopics[$this->classifyVerbalTopic($q['q'])] ?? null,
                 'question' => $q['q'],
                 'a' => $q['a'],
                 'b' => $q['b'],
@@ -477,5 +492,32 @@ class QuestionBankSeeder extends Seeder
         }
 
         return $data;
+    }
+
+    private function classifyVerbalTopic(string $question): string
+    {
+        $text = mb_strtolower($question);
+
+        if (str_contains($text, 'antonym') || str_contains($text, 'opposite in meaning')) {
+            return 'ANTONYMS';
+        }
+
+        if (str_contains($text, 'synonym')) {
+            return 'SYNONYMS';
+        }
+
+        if (str_contains($text, 'passage') || str_contains($text, 'according to the text')) {
+            return 'READING COMPREHENSION';
+        }
+
+        if (str_contains($text, '_____') || str_contains($text, 'fill in the blank')) {
+            return 'FILL IN THE BLANKS';
+        }
+
+        if (str_contains($text, 'error') || str_contains($text, 'which sentence demonstrates')) {
+            return 'ERROR RECOGNITION';
+        }
+
+        return 'GRAMMAR AND USAGE';
     }
 }

@@ -10,6 +10,7 @@ use App\Enums\ExamStatus;
 use App\Models\ExamBlueprint;
 use App\Models\ExamCategory;
 use App\Models\Question;
+use App\Models\QuestionTopic;
 use App\Models\User;
 use App\Services\Examination\ChoiceRandomizerService;
 use App\Services\Examination\ExamGeneratorService;
@@ -104,6 +105,19 @@ class ExaminationGenerationTest extends TestCase
         $this->assertSame(10, $attempt->total_questions);
         $this->assertCount(10, $attempt->attemptQuestions);
         $this->assertSame(ExamMode::Category, $attempt->mode);
+    }
+
+    public function test_topic_practice_generates_questions_from_the_selected_topic(): void
+    {
+        $topic = QuestionTopic::whereHas('questions', fn ($query) => $query->published())->firstOrFail();
+        $expectedCount = min(3, $topic->questions()->published()->count());
+        $attempt = $this->generatorService->generateTopicPractice($this->user, $topic, $expectedCount);
+
+        $this->assertSame($expectedCount, $attempt->total_questions);
+        $this->assertSame(ExamMode::Topic, $attempt->mode);
+        $this->assertSame($topic->id, $attempt->topic_id);
+        $this->assertCount($expectedCount, $attempt->attemptQuestions);
+        $this->assertSame([$topic->id], $attempt->attemptQuestions->pluck('topic_id')->unique()->all());
     }
 
     public function test_cannot_generate_exam_if_insufficient_published_questions(): void

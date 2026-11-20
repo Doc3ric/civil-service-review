@@ -40,6 +40,17 @@
         </div>
     </div>
 
+    <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-3">
+        <label for="practice-topic" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Narrow practice to a topic (optional)</label>
+        <select id="practice-topic" wire:model.live="selectedTopicId" class="block w-full py-2.5 px-3 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-[#2563EB]">
+            <option value="">All topics in {{ $currentCat?->name }}</option>
+            @foreach ($currentTopics as $topic)
+                <option value="{{ $topic->id }}">{{ $topic->name }} ({{ $topic->published_count }} available)</option>
+            @endforeach
+        </select>
+        <p class="text-[11px] text-slate-400">Choose a topic such as Antonyms to get a focused quiz. Add or rename topics from the Categories page.</p>
+    </div>
+
     <!-- Question Count Selector -->
     <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Select Number of Practice Questions</label>
@@ -57,7 +68,7 @@
             @endforeach
         </div>
         <p class="text-xs text-slate-400">
-            Current Category: <strong class="text-slate-700">{{ $currentCat?->name }}</strong> ({{ $currentCat?->published_count ?? 0 }} published questions ready).
+            Current Practice: <strong class="text-slate-700">{{ $selectedTopic?->name ?? $currentCat?->name }}</strong> ({{ $selectedTopic?->published_count ?? $currentCat?->published_count ?? 0 }} published questions ready).
         </p>
     </div>
 
@@ -68,7 +79,7 @@
                 class="inline-flex items-center gap-2 px-8 py-3.5 rounded-2xl font-bold text-sm text-white bg-[#C92535] hover:bg-[#A81B29] transition shadow-md disabled:opacity-50">
             <span wire:loading.remove wire:target="startPractice">
                 <i data-lucide="sliders-horizontal" class="w-5 h-5 inline mr-1"></i>
-                Start {{ $currentCat?->name }} Practice
+                Start {{ $selectedTopic?->name ?? $currentCat?->name }} Practice
             </span>
             <span wire:loading wire:target="startPractice">Preparing Session...</span>
         </button>

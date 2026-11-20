@@ -14,6 +14,7 @@ class ExamReviewService
      * @return array<int, array{
      *     question_number: int,
      *     category_name: string,
+     *     topic_name: ?string,
      *     question_text: string,
      *     choices: array<int, array{label: string, text: string, is_correct: bool}>,
      *     selected_choice: ?string,
@@ -43,6 +44,7 @@ class ExamReviewService
             $items[] = [
                 'question_number' => $aq->question_number,
                 'category_name' => $aq->category_name_snapshot,
+                'topic_name' => $aq->topic_name_snapshot,
                 'question_text' => $aq->question_text_snapshot,
                 'choices' => $aq->shuffled_choices_json ?? [],
                 'selected_choice' => $selected,
@@ -50,6 +52,7 @@ class ExamReviewService
                 'is_correct' => $isCorrect,
                 'is_unanswered' => $isUnanswered,
                 'explanation' => $aq->explanation_snapshot,
+                'explanation_image' => $aq->explanation_image_url,
                 'status_badge' => $statusBadge,
             ];
         }

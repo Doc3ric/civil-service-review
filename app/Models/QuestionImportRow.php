@@ -18,6 +18,7 @@ class QuestionImportRow extends Model
         'row_number',
         'raw_data_json',
         'category_code',
+        'topic_name',
         'question_text',
         'choice_a',
         'choice_b',

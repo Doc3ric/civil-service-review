@@ -1,4 +1,17 @@
 <div class="space-y-6">
+    <!-- Feedback / Flash Toast in Component -->
+    @if (session()->has('success'))
+        <div class="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-between text-sm shadow-xs transition" x-data="{ show: true }" x-show="show">
+            <div class="flex items-center gap-2.5">
+                <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-600 shrink-0"></i>
+                <span class="font-medium text-xs">{{ session('success') }}</span>
+            </div>
+            <button type="button" @click="show = false" class="text-emerald-500 hover:text-emerald-700 p-1">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+    @endif
+
     <!-- Header / Actions Toolbar -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -16,6 +29,13 @@
                 <i data-lucide="plus" class="w-4 h-4"></i>
                 <span>New Question</span>
             </button>
+            @if ($sampleQuestionCount > 0)
+                <button wire:click="confirmDeleteSampleQuestions"
+                        class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    <span>Remove Samples ({{ $activeSampleQuestionCount }} active)</span>
+                </button>
+            @endif
             <button wire:click="confirmDeleteAll"
                     class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-slate-700 hover:bg-slate-900 transition shadow-xs">
                 <i data-lucide="trash-2" class="w-4 h-4"></i>
@@ -25,7 +45,7 @@
     </div>
 
     <!-- Filters & Search Bar -->
-    <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+    <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
         <!-- Search input -->
         <div class="lg:col-span-2 relative">
             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -35,6 +55,16 @@
                    wire:model.live.debounce.300ms="search"
                    placeholder="Search questions, choices, sources..."
                    class="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent">
+        </div>
+
+        <div>
+            <select wire:model.live="topicId"
+                    class="block w-full py-2 px-3 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent">
+                <option value="">All Topics</option>
+                @foreach ($topics as $topic)
+                    <option value="{{ $topic->id }}">{{ $topic->name }}</option>
+                @endforeach
+            </select>
         </div>
 
         <!-- Category filter -->
@@ -111,10 +141,21 @@
                                           style="background-color: {{ $q->category->color }}15; color: {{ $q->category->color }}">
                                         {{ $q->category->name }}
                                     </span>
+                                    @if ($q->topic)
+                                        <span class="block mt-1 text-[11px] font-semibold text-[#174A8B]">{{ $q->topic->name }}</span>
+                                    @endif
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="font-medium text-slate-900 line-clamp-2 max-w-lg">
                                         {{ $q->question_text }}
+                                    </div>
+                                    <div class="mt-1 flex flex-wrap items-center gap-1.5">
+                                        <span class="inline-flex px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-semibold text-slate-600">
+                                            {{ $q->origin?->label() ?? 'Manually entered' }}
+                                        </span>
+                                        @if ($q->importBatch)
+                                            <span class="text-[10px] text-slate-400">Import: {{ $q->importBatch->original_filename }}</span>
+                                        @endif
                                     </div>
                                     @if ($q->source)
                                         <div class="text-[11px] text-slate-400 mt-0.5 truncate">
@@ -155,23 +196,27 @@
                                     <div class="inline-flex items-center gap-1.5">
                                         <button wire:click="openViewModal({{ $q->id }})"
                                                 title="View Details"
-                                                class="p-1.5 rounded-lg text-slate-500 hover:text-[#174A8B] hover:bg-slate-100 transition">
+                                                aria-label="View Details"
+                                                class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-slate-500 hover:text-[#174A8B] hover:bg-slate-100 transition">
                                             <i data-lucide="eye" class="w-4 h-4"></i>
                                         </button>
                                         <button wire:click="openEditModal({{ $q->id }})"
                                                 title="Edit Question"
-                                                class="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 transition">
+                                                aria-label="Edit Question"
+                                                class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 transition">
                                             <i data-lucide="edit-3" class="w-4 h-4"></i>
                                         </button>
                                         <button wire:click="toggleArchive({{ $q->id }})"
                                                 title="{{ $statusVal === 'archived' ? 'Restore' : 'Archive' }}"
-                                                class="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-slate-100 transition">
+                                                aria-label="{{ $statusVal === 'archived' ? 'Restore' : 'Archive' }}"
+                                                class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-slate-500 hover:text-amber-600 hover:bg-slate-100 transition">
                                             <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
                                         </button>
                                         <button wire:click="deleteQuestion({{ $q->id }})"
                                                 wire:confirm="Are you sure you want to delete this question from the Question Bank?"
-                                                title="Delete"
-                                                class="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition">
+                                                title="Delete Question"
+                                                aria-label="Delete Question"
+                                                class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition">
                                             <i data-lucide="trash-2" class="w-4 h-4"></i>
                                         </button>
                                     </div>
@@ -191,11 +236,13 @@
 
     <!-- View Question Modal -->
     @if ($showViewModal && $viewingQuestion)
-        <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="view-modal-title">
+            <div class="flex items-center justify-center min-h-screen px-4 py-8">
+                {{-- Backdrop --}}
                 <div class="fixed inset-0 bg-slate-900/60 transition-opacity" wire:click="closeViewModal"></div>
 
-                <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+                {{-- Modal Panel --}}
+                <div class="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full z-10 overflow-hidden text-left" @click.stop>
                     <div class="bg-white px-6 pt-6 pb-4 border-b border-slate-100 flex items-center justify-between">
                         <div class="flex items-center gap-2">
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded text-[11px] font-bold uppercase"
@@ -204,7 +251,7 @@
                             </span>
                             <span class="text-xs text-slate-400 font-mono">Question #{{ $viewingQuestion->id }}</span>
                         </div>
-                        <button wire:click="closeViewModal" class="text-slate-400 hover:text-slate-600 p-1">
+                        <button type="button" wire:click="closeViewModal" class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
                             <i data-lucide="x" class="w-5 h-5"></i>
                         </button>
                     </div>
@@ -243,24 +290,45 @@
                         </div>
 
                         <!-- Explanation -->
-                        @if ($viewingQuestion->explanation)
+                        @if ($viewingQuestion->explanation || $viewingQuestion->explanation_image)
                             <div>
                                 <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Answer Explanation</h4>
-                                <div class="p-4 rounded-xl bg-blue-50/70 border border-blue-100 text-xs text-blue-900 leading-relaxed">
-                                    {{ $viewingQuestion->explanation }}
+                                <div class="p-4 rounded-xl bg-blue-50/70 border border-blue-100 text-xs text-blue-900 leading-relaxed space-y-3">
+                                    @if ($viewingQuestion->explanation)
+                                        <p class="whitespace-pre-line">{{ $viewingQuestion->explanation }}</p>
+                                    @endif
+                                    @if ($viewingQuestion->explanation_image_url)
+                                        <div class="mt-2 pt-2 border-t border-blue-200/60">
+                                            <span class="block text-[11px] font-semibold text-[#174A8B] uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                                <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                                                <span>Explanation Image / Solution Diagram:</span>
+                                            </span>
+                                            <a href="{{ $viewingQuestion->explanation_image_url }}" target="_blank" rel="noopener noreferrer" title="Click to view full image in new tab">
+                                                <img src="{{ $viewingQuestion->explanation_image_url }}" alt="Answer explanation diagram" class="max-h-72 rounded-lg border border-blue-200 shadow-xs hover:opacity-95 transition object-contain bg-white p-1">
+                                            </a>
+                                        </div>
+                                    @endif
                                 </div>
                             </div>
                         @endif
 
                         <!-- Metadata Footer -->
-                        <div class="pt-4 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs text-slate-500">
+                        <div class="pt-4 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs text-slate-500">
                             <div>
                                 <span class="block text-slate-400">Difficulty:</span>
                                 <span class="font-semibold text-slate-800 capitalize">{{ $viewingQuestion->difficulty instanceof \BackedEnum ? $viewingQuestion->difficulty->value : (string) $viewingQuestion->difficulty }}</span>
                             </div>
                             <div>
+                                <span class="block text-slate-400">Topic:</span>
+                                <span class="font-semibold text-slate-800">{{ $viewingQuestion->topic?->name ?? 'Not assigned' }}</span>
+                            </div>
+                            <div>
                                 <span class="block text-slate-400">Status:</span>
                                 <span class="font-semibold text-slate-800 capitalize">{{ $viewingQuestion->status instanceof \BackedEnum ? $viewingQuestion->status->value : (string) $viewingQuestion->status }}</span>
+                            </div>
+                            <div>
+                                <span class="block text-slate-400">Question Origin:</span>
+                                <span class="font-semibold text-slate-800">{{ $viewingQuestion->origin?->label() ?? 'Manually entered' }}</span>
                             </div>
                             <div>
                                 <span class="block text-slate-400">Source:</span>
@@ -270,7 +338,7 @@
                     </div>
 
                     <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end">
-                        <button wire:click="closeViewModal" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100">
+                        <button type="button" wire:click="closeViewModal" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 transition">
                             Close
                         </button>
                     </div>
@@ -281,31 +349,45 @@
 
     <!-- Create / Edit Question Modal -->
     @if ($showEditModal)
-        <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+            <div class="flex items-center justify-center min-h-screen px-4 py-8">
+                {{-- Backdrop --}}
                 <div class="fixed inset-0 bg-slate-900/60 transition-opacity" wire:click="closeEditModal"></div>
 
-                <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+                {{-- Modal Panel --}}
+                <div class="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full z-10 overflow-hidden text-left" @click.stop>
                     <div class="bg-white px-6 pt-6 pb-4 border-b border-slate-100 flex items-center justify-between">
-                        <h3 class="text-base font-bold text-slate-900">
+                        <h3 id="edit-modal-title" class="text-base font-bold text-slate-900">
                             {{ $editingQuestionId ? 'Edit Question #' . $editingQuestionId : 'Add New Question' }}
                         </h3>
-                        <button wire:click="closeEditModal" class="text-slate-400 hover:text-slate-600 p-1">
+                        <button type="button" wire:click="closeEditModal" class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
                             <i data-lucide="x" class="w-5 h-5"></i>
                         </button>
                     </div>
 
                     <form wire:submit="saveQuestion" class="p-6 space-y-4">
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <!-- Category -->
                             <div>
                                 <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">Category *</label>
-                                <select wire:model="formCategoryId" class="block w-full py-2 px-3 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-[#2563EB]">
+                                <select wire:model.live="formCategoryId" class="block w-full py-2 px-3 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-[#2563EB]">
                                     @foreach ($categories as $cat)
                                         <option value="{{ $cat->id }}">{{ $cat->name }}</option>
                                     @endforeach
                                 </select>
                                 @error('formCategoryId') <p class="text-[11px] text-red-600 mt-1">{{ $message }}</p> @enderror
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">Topic</label>
+                                <select wire:model="formTopicId" class="block w-full py-2 px-3 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-[#2563EB]">
+                                    <option value="">No topic</option>
+                                    @foreach ($formTopics as $topic)
+                                        <option value="{{ $topic->id }}">{{ $topic->name }}</option>
+                                    @endforeach
+                                </select>
+                                @error('formTopicId') <p class="text-[11px] text-red-600 mt-1">{{ $message }}</p> @enderror
+                                <a href="{{ route('categories.index') }}" class="inline-block mt-1 text-[11px] text-[#174A8B] hover:underline">Manage topics</a>
                             </div>
 
                             <!-- Difficulty -->
@@ -346,7 +428,7 @@
                             <!-- Choice A -->
                             <div class="flex items-center gap-3">
                                 <label class="flex items-center gap-1.5 cursor-pointer">
-                                    <input type="radio" wire:model="formCorrectChoice" value="A" name="correctChoiceRadio" class="h-4 w-4 text-[#174A8B] focus:ring-[#2563EB]">
+                                    <input type="radio" wire:model.live="formCorrectChoice" value="A" name="correctChoiceRadio" class="h-4 w-4 text-[#174A8B] focus:ring-[#2563EB]">
                                     <span class="font-bold text-xs text-slate-800">A</span>
                                 </label>
                                 <input type="text" wire:model="formChoiceA" required placeholder="Option A text..."
@@ -357,7 +439,7 @@
                             <!-- Choice B -->
                             <div class="flex items-center gap-3">
                                 <label class="flex items-center gap-1.5 cursor-pointer">
-                                    <input type="radio" wire:model="formCorrectChoice" value="B" name="correctChoiceRadio" class="h-4 w-4 text-[#174A8B] focus:ring-[#2563EB]">
+                                    <input type="radio" wire:model.live="formCorrectChoice" value="B" name="correctChoiceRadio" class="h-4 w-4 text-[#174A8B] focus:ring-[#2563EB]">
                                     <span class="font-bold text-xs text-slate-800">B</span>
                                 </label>
                                 <input type="text" wire:model="formChoiceB" required placeholder="Option B text..."
@@ -368,7 +450,7 @@
                             <!-- Choice C -->
                             <div class="flex items-center gap-3">
                                 <label class="flex items-center gap-1.5 cursor-pointer">
-                                    <input type="radio" wire:model="formCorrectChoice" value="C" name="correctChoiceRadio" class="h-4 w-4 text-[#174A8B] focus:ring-[#2563EB]">
+                                    <input type="radio" wire:model.live="formCorrectChoice" value="C" name="correctChoiceRadio" class="h-4 w-4 text-[#174A8B] focus:ring-[#2563EB]">
                                     <span class="font-bold text-xs text-slate-800">C</span>
                                 </label>
                                 <input type="text" wire:model="formChoiceC" required placeholder="Option C text..."
@@ -379,7 +461,7 @@
                             <!-- Choice D -->
                             <div class="flex items-center gap-3">
                                 <label class="flex items-center gap-1.5 cursor-pointer">
-                                    <input type="radio" wire:model="formCorrectChoice" value="D" name="correctChoiceRadio" class="h-4 w-4 text-[#174A8B] focus:ring-[#2563EB]">
+                                    <input type="radio" wire:model.live="formCorrectChoice" value="D" name="correctChoiceRadio" class="h-4 w-4 text-[#174A8B] focus:ring-[#2563EB]">
                                     <span class="font-bold text-xs text-slate-800">D</span>
                                 </label>
                                 <input type="text" wire:model="formChoiceD" required placeholder="Option D text..."
@@ -388,11 +470,72 @@
                             @error('formChoiceD') <p class="text-[11px] text-red-600">{{ $message }}</p> @enderror
                         </div>
 
-                        <!-- Explanation -->
-                        <div>
-                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">Answer Explanation (Optional)</label>
-                            <textarea wire:model="formExplanation" rows="2" placeholder="Explain why the answer is correct for the reviewer..."
-                                      class="block w-full p-3 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-[#2563EB]"></textarea>
+                        <!-- Explanation & Image Attachment -->
+                        <div class="space-y-3 p-4 rounded-xl bg-slate-50 border border-slate-200">
+                            <div>
+                                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+                                    Answer Explanation (Optional)
+                                </label>
+                                <textarea wire:model="formExplanation" rows="2" placeholder="Explain why the answer is correct for the reviewer..."
+                                          class="block w-full p-3 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-[#2563EB] bg-white"></textarea>
+                                @error('formExplanation') <p class="text-[11px] text-red-600 mt-1">{{ $message }}</p> @enderror
+                            </div>
+
+                            <!-- Explanation Image Upload -->
+                            <div class="pt-2 border-t border-slate-200/80">
+                                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5 flex items-center gap-1.5">
+                                    <i data-lucide="image" class="w-3.5 h-3.5 text-[#174A8B]"></i>
+                                    <span>Explanation Image / Solution Diagram (Optional)</span>
+                                </label>
+
+                                {{-- If a new temporary image is uploaded, show preview --}}
+                                @if ($formExplanationImage)
+                                    <div class="mb-3 p-3 bg-white rounded-lg border border-slate-200 flex items-start gap-4">
+                                        <img src="{{ $formExplanationImage->temporaryUrl() }}" alt="Explanation preview" class="w-24 h-24 object-cover rounded-lg border border-slate-200 shadow-2xs">
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
+                                                <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                                                <span>New image selected</span>
+                                            </div>
+                                            <p class="text-[11px] text-slate-500 mt-0.5 truncate">{{ $formExplanationImage->getClientOriginalName() }}</p>
+                                            <button type="button" wire:click="clearExplanationImage" class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-800 transition">
+                                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                                <span>Remove image</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                {{-- Else if an existing image is stored on the question and not removed --}}
+                                @elseif ($existingExplanationImage && !$removeExplanationImage)
+                                    <div class="mb-3 p-3 bg-white rounded-lg border border-slate-200 flex items-start gap-4">
+                                        <img src="{{ asset('storage/' . ltrim($existingExplanationImage, '/')) }}" alt="Current explanation image" class="w-24 h-24 object-cover rounded-lg border border-slate-200 shadow-2xs">
+                                        <div class="flex-1 min-w-0">
+                                            <span class="text-xs font-bold text-slate-800 block">Current Attached Image</span>
+                                            <p class="text-[11px] text-slate-400 mt-0.5">Saved in repository</p>
+                                            <button type="button" wire:click="clearExplanationImage" class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-800 transition">
+                                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                                <span>Delete existing image</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                @endif
+
+                                {{-- File Input --}}
+                                <div class="flex items-center gap-2">
+                                    <input type="file"
+                                           wire:model="formExplanationImage"
+                                           accept="image/png,image/jpeg,image/webp,image/gif"
+                                           class="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-[#174A8B] hover:file:bg-blue-100 cursor-pointer border border-slate-300 rounded-lg p-1 bg-white">
+                                </div>
+                                <div wire:loading wire:target="formExplanationImage" class="text-[11px] text-[#174A8B] font-medium mt-1 flex items-center gap-1.5">
+                                    <svg class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                    </svg>
+                                    <span>Uploading image & preparing preview...</span>
+                                </div>
+                                @error('formExplanationImage') <p class="text-[11px] text-red-600 mt-1">{{ $message }}</p> @enderror
+                                <p class="text-[11px] text-slate-400 mt-1">Supports PNG, JPG, JPEG, WEBP, or GIF up to 5MB.</p>
+                            </div>
                         </div>
 
                         <!-- Source -->
@@ -403,14 +546,52 @@
                         </div>
 
                         <div class="bg-slate-50 -mx-6 -mb-6 px-6 py-4 border-t border-slate-100 flex justify-end gap-3 mt-6">
-                            <button type="button" wire:click="closeEditModal" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100">
+                            <button type="button" wire:click="closeEditModal" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 transition">
                                 Cancel
                             </button>
-                            <button type="submit" class="px-5 py-2 rounded-lg text-xs font-bold text-white bg-[#C92535] hover:bg-[#A81B29] transition shadow-xs">
-                                {{ $editingQuestionId ? 'Update Question' : 'Save Question' }}
+                            <button type="submit"
+                                    wire:loading.attr="disabled"
+                                    wire:target="saveQuestion"
+                                    class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold text-white bg-[#C92535] hover:bg-[#A81B29] transition disabled:opacity-50 disabled:cursor-not-allowed shadow-xs">
+                                <span wire:loading.remove wire:target="saveQuestion">
+                                    {{ $editingQuestionId ? 'Update Question' : 'Save Question' }}
+                                </span>
+                                <span wire:loading wire:target="saveQuestion" class="inline-flex items-center gap-2">
+                                    <svg class="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                    </svg>
+                                    Saving...
+                                </span>
                             </button>
                         </div>
                     </form>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ===== Remove Sample Questions Confirmation Modal ===== --}}
+    @if ($showDeleteSampleModal)
+        <div class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="delete-samples-title">
+            <div class="flex items-center justify-center min-h-screen px-4 py-8">
+                <div class="fixed inset-0 bg-slate-900/60" wire:click="cancelDeleteSampleQuestions"></div>
+                <div class="relative bg-white rounded-2xl shadow-2xl max-w-md w-full z-10 overflow-hidden">
+                    <div class="p-6 border-b border-slate-100">
+                        <h3 id="delete-samples-title" class="text-sm font-bold text-slate-900">Remove built-in sample questions?</h3>
+                        <p class="mt-2 text-xs text-slate-600 leading-relaxed">
+                            This permanently clears {{ $sampleQuestionCount }} built-in sample records, including {{ $activeSampleQuestionCount }} active questions and any archived sample copies. Your manually entered and Excel-imported questions are kept.
+                            A dated database backup is created before removal.
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+                        <button type="button" wire:click="cancelDeleteSampleQuestions"
+                                class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100">Cancel</button>
+                        <button type="button" wire:click="deleteSampleQuestions" wire:loading.attr="disabled"
+                                class="px-5 py-2 rounded-lg text-xs font-bold text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-50">
+                            Remove All Sample Records
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

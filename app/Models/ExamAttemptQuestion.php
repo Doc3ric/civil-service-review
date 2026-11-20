@@ -17,10 +17,13 @@ class ExamAttemptQuestion extends Model
         'exam_attempt_id',
         'question_id',
         'category_id',
+        'topic_id',
         'question_number',
         'question_text_snapshot',
         'category_name_snapshot',
+        'topic_name_snapshot',
         'explanation_snapshot',
+        'explanation_image_snapshot',
         'correct_choice_label_snapshot',
         'shuffled_choices_json',
     ];
@@ -31,6 +34,16 @@ class ExamAttemptQuestion extends Model
             'question_number' => 'integer',
             'shuffled_choices_json' => 'array',
         ];
+    }
+
+    public function getExplanationImageUrlAttribute(): ?string
+    {
+        $path = $this->explanation_image_snapshot ?? $this->question?->explanation_image;
+        if (empty($path)) {
+            return null;
+        }
+
+        return asset('storage/' . ltrim($path, '/'));
     }
 
     /**
@@ -55,6 +68,14 @@ class ExamAttemptQuestion extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ExamCategory::class, 'category_id');
+    }
+
+    /**
+     * @return BelongsTo<QuestionTopic, $this>
+     */
+    public function topic(): BelongsTo
+    {
+        return $this->belongsTo(QuestionTopic::class, 'topic_id');
     }
 
     /**

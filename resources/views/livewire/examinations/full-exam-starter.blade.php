@@ -35,9 +35,12 @@
                 <h3 class="text-base font-bold text-slate-900">Configured Examination Blueprint</h3>
                 <p class="text-xs text-slate-500">Subject distributions randomized from the published Question Bank</p>
             </div>
-            <span class="text-xs font-bold text-[#174A8B] bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
-                Total: 150 Items
-            </span>
+            <div class="flex items-center gap-3">
+                <a href="{{ route('settings') }}" class="text-xs font-bold text-[#174A8B] hover:underline">Adjust allocations</a>
+                <span class="text-xs font-bold text-[#174A8B] bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
+                    Total: {{ $blueprint->total_questions }} Items
+                </span>
+            </div>
         </div>
 
         <div class="overflow-x-auto">
@@ -54,12 +57,24 @@
                     @foreach ($blueprint->blueprintCategories as $bc)
                         @php
                             $available = \App\Models\Question::published()->where('category_id', $bc->category_id)->count();
-                            $hasEnough = $available >= $bc->question_count;
+                            $hasTopicAllocations = $bc->topicAllocations->isNotEmpty();
+                            $topicQuotaTotal = (int) $bc->topicAllocations->sum('question_count');
+                            $topicsReady = $bc->topicAllocations->every(fn ($allocation) => ($topicAvailability[$allocation->topic_id] ?? 0) >= $allocation->question_count);
+                            $hasEnough = $hasTopicAllocations
+                                ? ($topicQuotaTotal === $bc->question_count && $topicsReady)
+                                : ($available >= $bc->question_count);
                         @endphp
                         <tr class="hover:bg-slate-50/70 transition">
                             <td class="px-6 py-4 font-bold text-slate-900 flex items-center gap-2.5">
                                 <span class="w-3 h-3 rounded-full" style="background-color: {{ $bc->category->color }}"></span>
                                 <span>{{ $bc->category->name }}</span>
+                                @if ($hasTopicAllocations)
+                                    <div class="ml-6 mt-1 text-[11px] font-medium text-slate-500">
+                                        @foreach ($bc->topicAllocations as $allocation)
+                                            <div>{{ $allocation->topic->name }}: {{ $allocation->question_count }} questions</div>
+                                        @endforeach
+                                    </div>
+                                @endif
                             </td>
                             <td class="px-6 py-4 text-center font-bold text-slate-800 text-sm">
                                 {{ $bc->question_count }}
@@ -71,7 +86,7 @@
                                 @if ($hasEnough)
                                     <span class="inline-flex items-center gap-1 text-emerald-700 font-semibold text-xs">
                                         <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
-                                        <span>Ready ({{ $available }} available)</span>
+                                        <span>Ready ({{ $hasTopicAllocations ? $topicQuotaTotal : $available }} available)</span>
                                     </span>
                                 @else
                                     <span class="inline-flex items-center gap-1 text-rose-700 font-semibold text-xs">
@@ -86,6 +101,18 @@
             </table>
         </div>
     </div>
+
+    @if (!$availability['sufficient'])
+        <div class="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+            <p class="font-bold mb-1">Blueprint needs attention</p>
+            <ul class="list-disc list-inside space-y-1">
+                @foreach ($availability['deficits'] as $label => $info)
+                    <li>{{ $info['reason'] ?? "{$label} requires {$info['required']} questions; {$info['available']} published." }}</li>
+                @endforeach
+            </ul>
+            <a href="{{ route('settings') }}" class="inline-block mt-2 font-bold text-[#174A8B] hover:underline">Edit blueprint settings</a>
+        </div>
+    @endif
 
     <!-- Examination Instructions & Policies -->
     <div class="bg-blue-50/70 rounded-2xl p-6 border border-blue-100 text-xs text-blue-950 space-y-3">
@@ -109,7 +136,7 @@
                     class="inline-flex items-center gap-2.5 px-8 py-4 rounded-2xl font-extrabold text-base text-white bg-[#C92535] hover:bg-[#A81B29] transition shadow-lg ring-4 ring-rose-500/20 disabled:opacity-50">
                 <span wire:loading.remove wire:target="startExam">
                     <i data-lucide="graduation-cap" class="w-6 h-6 inline mr-1"></i>
-                    Begin 150-Item Examination
+                    Begin {{ $blueprint->total_questions }}-Item Examination
                 </span>
                 <span wire:loading wire:target="startExam">Generating Examination Questions...</span>
             </button>

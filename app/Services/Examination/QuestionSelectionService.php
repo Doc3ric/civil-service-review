@@ -7,6 +7,7 @@ namespace App\Services\Examination;
 use App\Models\ExamBlueprint;
 use App\Models\ExamCategory;
 use App\Models\Question;
+use App\Models\QuestionTopic;
 use Illuminate\Support\Collection;
 use RuntimeException;
 
@@ -18,7 +19,7 @@ class QuestionSelectionService
      * @param ExamBlueprint $blueprint
      * @return array{
      *     sufficient: bool,
-     *     deficits: array<string, array{required: int, available: int}>
+     *     deficits: array<string, array{required: int, available: int, reason?: string}>
      * }
      */
     public function checkBlueprintAvailability(ExamBlueprint $blueprint): array
@@ -26,11 +27,52 @@ class QuestionSelectionService
         $deficits = [];
         $sufficient = true;
 
+        $blueprint->loadMissing('blueprintCategories.topicAllocations.topic');
+
         foreach ($blueprint->blueprintCategories as $bc) {
             $cat = $bc->category;
-            $available = Question::published()
-                ->where('category_id', $cat->id)
-                ->count();
+
+            if ($bc->topicAllocations->isNotEmpty()) {
+                $allocatedTotal = (int) $bc->topicAllocations->sum('question_count');
+                if ($allocatedTotal !== $bc->question_count) {
+                    $sufficient = false;
+                    $deficits[$cat->name] = [
+                        'required' => $bc->question_count,
+                        'available' => $allocatedTotal,
+                        'reason' => "Topic quotas total {$allocatedTotal}; they must total {$bc->question_count}.",
+                    ];
+                    continue;
+                }
+
+                foreach ($bc->topicAllocations as $allocation) {
+                    $topic = $allocation->topic;
+                    if ((int) $topic->category_id !== (int) $bc->category_id) {
+                        $sufficient = false;
+                        $deficits["{$cat->name} — {$topic->name}"] = [
+                            'required' => $allocation->question_count,
+                            'available' => 0,
+                            'reason' => "{$topic->name} does not belong to {$cat->name}.",
+                        ];
+                        continue;
+                    }
+
+                    $available = Question::published()
+                        ->where('category_id', $bc->category_id)
+                        ->where('topic_id', $topic->id)
+                        ->count();
+                    if ($available < $allocation->question_count) {
+                        $sufficient = false;
+                        $deficits["{$cat->name} — {$topic->name}"] = [
+                            'required' => $allocation->question_count,
+                            'available' => $available,
+                        ];
+                    }
+                }
+
+                continue;
+            }
+
+            $available = Question::published()->where('category_id', $cat->id)->count();
 
             if ($available < $bc->question_count) {
                 $sufficient = false;
@@ -59,7 +101,7 @@ class QuestionSelectionService
         if (!$availability['sufficient']) {
             $details = [];
             foreach ($availability['deficits'] as $catName => $info) {
-                $details[] = "{$catName} requires {$info['required']} questions, but only {$info['available']} are published";
+                $details[] = $info['reason'] ?? "{$catName} requires {$info['required']} questions, but only {$info['available']} are published";
             }
             throw new RuntimeException('Cannot generate examination. Insufficient published questions: ' . implode('; ', $details));
         }
@@ -67,15 +109,28 @@ class QuestionSelectionService
         $allQuestions = collect();
 
         foreach ($blueprint->blueprintCategories as $bc) {
-            /** @var Collection<int, Question> $categoryQuestions */
-            $categoryQuestions = Question::published()
-                ->with(['choices', 'category'])
-                ->where('category_id', $bc->category_id)
-                ->inRandomOrder()
-                ->limit($bc->question_count)
-                ->get();
+            if ($bc->topicAllocations->isNotEmpty()) {
+                foreach ($bc->topicAllocations as $allocation) {
+                    $topicQuestions = Question::published()
+                        ->with(['choices', 'category', 'topic'])
+                        ->where('category_id', $bc->category_id)
+                        ->where('topic_id', $allocation->topic_id)
+                        ->inRandomOrder()
+                        ->limit($allocation->question_count)
+                        ->get();
+                    $allQuestions = $allQuestions->concat($topicQuestions);
+                }
+            } else {
+                /** @var Collection<int, Question> $categoryQuestions */
+                $categoryQuestions = Question::published()
+                    ->with(['choices', 'category', 'topic'])
+                    ->where('category_id', $bc->category_id)
+                    ->inRandomOrder()
+                    ->limit($bc->question_count)
+                    ->get();
 
-            $allQuestions = $allQuestions->concat($categoryQuestions);
+                $allQuestions = $allQuestions->concat($categoryQuestions);
+            }
         }
 
         return $allQuestions->shuffle()->values();
@@ -101,10 +156,31 @@ class QuestionSelectionService
         $countToSelect = min($requestedCount, $available);
 
         return Question::published()
-            ->with(['choices', 'category'])
+            ->with(['choices', 'category', 'topic'])
             ->where('category_id', $category->id)
             ->inRandomOrder()
             ->limit($countToSelect)
+            ->get();
+    }
+
+    /**
+     * Select random published questions for a single topic.
+     *
+     * @return Collection<int, Question>
+     */
+    public function selectQuestionsForTopic(QuestionTopic $topic, int $requestedCount): Collection
+    {
+        $available = Question::published()->where('topic_id', $topic->id)->count();
+
+        if ($available === 0) {
+            throw new \RuntimeException("No published questions available for {$topic->name}.");
+        }
+
+        return Question::published()
+            ->with(['choices', 'category', 'topic'])
+            ->where('topic_id', $topic->id)
+            ->inRandomOrder()
+            ->limit(min($requestedCount, $available))
             ->get();
     }
 }

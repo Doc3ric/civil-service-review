@@ -15,6 +15,7 @@ use App\Services\Import\DuplicateDetectionService;
 use App\Services\Import\QuestionImportService;
 use App\Services\Import\QuestionValidationService;
 use Database\Seeders\ExamCategorySeeder;
+use Database\Seeders\QuestionTopicSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -34,6 +35,7 @@ class ExcelImportTest extends TestCase
         parent::setUp();
 
         $this->seed(ExamCategorySeeder::class);
+        $this->seed(QuestionTopicSeeder::class);
         $this->validationService = app(QuestionValidationService::class);
         $this->duplicateService = app(DuplicateDetectionService::class);
         $this->importService = app(QuestionImportService::class);
@@ -45,14 +47,21 @@ class ExcelImportTest extends TestCase
         $spreadsheet = $this->importService->generateTemplateSpreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 
-        $this->assertSame('category', $sheet->getCell('A1')->getValue());
-        $this->assertSame('question', $sheet->getCell('B1')->getValue());
-        $this->assertSame('choice_a', $sheet->getCell('C1')->getValue());
-        $this->assertSame('choice_b', $sheet->getCell('D1')->getValue());
-        $this->assertSame('choice_c', $sheet->getCell('E1')->getValue());
-        $this->assertSame('choice_d', $sheet->getCell('F1')->getValue());
-        $this->assertSame('correct_answer', $sheet->getCell('G1')->getValue());
-        $this->assertSame('explanation', $sheet->getCell('H1')->getValue());
+        $this->assertSame([
+            'category',
+            'topic',
+            'question',
+            'choice_a',
+            'choice_b',
+            'choice_c',
+            'choice_d',
+            'correct_answer',
+            'explanation',
+            'difficulty',
+            'source',
+        ], $sheet->rangeToArray('A1:K1', null, true, false)[0]);
+        $this->assertSame('Valid Categories & Topics', $spreadsheet->getSheet(1)->getTitle());
+        $this->assertSame('ANTONYMS', $spreadsheet->getSheet(1)->getCell('C2')->getValue());
     }
 
     public function test_validation_service_validates_valid_and_invalid_rows(): void
@@ -88,6 +97,14 @@ class ExcelImportTest extends TestCase
         $keyResult = $this->validationService->validateRow($invalidKeyRow);
         $this->assertFalse($keyResult['is_valid']);
         $this->assertStringContainsString('Correct answer must be A, B, C, or D', $keyResult['errors'][0]);
+
+        $unknownTopicRow = $validRow;
+        $unknownTopicRow['topic'] = 'UNCONFIGURED TOPIC';
+        $topicResult = $this->validationService->validateRow($unknownTopicRow, [
+            'VERBAL' => ['ANTONYMS', 'SYNONYMS'],
+        ]);
+        $this->assertFalse($topicResult['is_valid']);
+        $this->assertStringContainsString('Unknown topic', $topicResult['errors'][0]);
     }
 
     public function test_duplicate_detection_identifies_existing_question(): void
@@ -163,6 +180,7 @@ class ExcelImportTest extends TestCase
 
         // Assert database
         $this->assertDatabaseHas('questions', ['question_text' => 'Imported Test Question One?']);
+        $this->assertDatabaseHas('questions', ['question_text' => 'Imported Test Question One?', 'origin' => 'imported']);
         $this->assertDatabaseHas('questions', ['question_text' => 'Imported Test Question Two?']);
         $this->assertDatabaseMissing('questions', ['question_text' => 'Imported Test Question Three (Invalid)?']);
 

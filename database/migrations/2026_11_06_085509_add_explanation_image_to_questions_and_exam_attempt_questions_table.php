@@ -1,0 +1,32 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('questions', function (Blueprint $table) {
+            $table->string('explanation_image')->nullable()->after('explanation');
+        });
+
+        Schema::table('exam_attempt_questions', function (Blueprint $table) {
+            $table->string('explanation_image_snapshot')->nullable()->after('explanation_snapshot');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('questions', function (Blueprint $table) {
+            $table->dropColumn('explanation_image');
+        });
+
+        Schema::table('exam_attempt_questions', function (Blueprint $table) {
+            $table->dropColumn('explanation_image_snapshot');
+        });
+    }
+};

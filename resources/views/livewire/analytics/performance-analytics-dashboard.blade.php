@@ -252,4 +252,47 @@
             </table>
         </div>
     </div>
+
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div class="p-6 border-b border-slate-200 bg-slate-50/60">
+            <h3 class="text-base font-bold text-slate-900">Topic Performance</h3>
+            <p class="text-xs text-slate-500">Accuracy across answered questions, grouped by category topic.</p>
+        </div>
+        @if (empty($analytics['topic_stats']))
+            <div class="p-8 text-center text-xs text-slate-500">Topic results will appear after you practice questions that have a topic assigned.</div>
+        @else
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold tracking-wider">
+                        <tr>
+                            <th class="px-6 py-3.5">Category</th>
+                            <th class="px-6 py-3.5">Topic</th>
+                            <th class="px-6 py-3.5 text-center">Attempted</th>
+                            <th class="px-6 py-3.5 text-center">Correct</th>
+                            <th class="px-6 py-3.5 text-center">Accuracy</th>
+                            <th class="px-6 py-3.5 text-right">Practice</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700">
+                        @foreach ($analytics['topic_stats'] as $topicStat)
+                            <tr>
+                                <td class="px-6 py-4 font-medium">{{ $topicStat['category_name'] }}</td>
+                                <td class="px-6 py-4 font-bold text-slate-900">{{ $topicStat['name'] }}</td>
+                                <td class="px-6 py-4 text-center">{{ $topicStat['attempted_count'] }}</td>
+                                <td class="px-6 py-4 text-center text-emerald-700 font-bold">{{ $topicStat['correct_count'] }}</td>
+                                <td class="px-6 py-4 text-center font-bold">{{ number_format($topicStat['percentage'], 1) }}%</td>
+                                <td class="px-6 py-4 text-right">
+                                    @if ($topicStat['topic_id'] && $topicStat['category_id'])
+                                        <a href="{{ route('exams.category', ['category_id' => $topicStat['category_id'], 'topic_id' => $topicStat['topic_id']]) }}" class="text-[#174A8B] font-bold hover:underline">Practice topic</a>
+                                    @else
+                                        <span class="text-slate-400">Topic removed</span>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </div>
 </div>

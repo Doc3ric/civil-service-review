@@ -32,6 +32,10 @@
                 class="px-4 py-2 rounded-xl text-xs font-semibold transition {{ $modeFilter === 'category' ? 'bg-[#174A8B] text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50' }}">
             Category Practice
         </button>
+        <button wire:click="$set('modeFilter', 'topic')"
+                class="px-4 py-2 rounded-xl text-xs font-semibold transition {{ $modeFilter === 'topic' ? 'bg-[#174A8B] text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50' }}">
+            Topic Practice
+        </button>
     </div>
 
     <!-- Attempts Table -->

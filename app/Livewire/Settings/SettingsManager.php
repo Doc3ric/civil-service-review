@@ -6,6 +6,7 @@ namespace App\Livewire\Settings;
 
 use App\Models\ExamBlueprint;
 use App\Models\ExamBlueprintCategory;
+use App\Models\ExamBlueprintCategoryTopic;
 use App\Models\ExamCategory;
 use App\Models\User;
 use App\Models\UserSetting;
@@ -27,6 +28,7 @@ class SettingsManager extends Component
     public int $durationMinutes = 170;
     public float $passingPercentage = 80.00;
     public array $categoryAllocations = []; // [category_id => count]
+    public array $topicAllocations = []; // [topic_id => optional count]
 
     // Study Settings fields
     public int $dailyQuestionTarget = 20;
@@ -46,7 +48,9 @@ class SettingsManager extends Component
         $user = Auth::user();
 
         // Blueprint
-        $blueprint = ExamBlueprint::where('is_active', true)->with('blueprintCategories.category')->first();
+        $blueprint = ExamBlueprint::where('is_active', true)
+            ->with(['blueprintCategories.category', 'blueprintCategories.topicAllocations'])
+            ->first();
         if ($blueprint) {
             $this->blueprintId = $blueprint->id;
             $this->examName = $blueprint->name;
@@ -56,6 +60,9 @@ class SettingsManager extends Component
 
             foreach ($blueprint->blueprintCategories as $bc) {
                 $this->categoryAllocations[$bc->category_id] = $bc->question_count;
+                foreach ($bc->topicAllocations as $allocation) {
+                    $this->topicAllocations[$allocation->topic_id] = $allocation->question_count;
+                }
             }
         }
 
@@ -72,21 +79,57 @@ class SettingsManager extends Component
 
     public function saveExamSettings(): void
     {
-        $this->validate([
+        $rules = [
             'examName' => ['required', 'string', 'max:255'],
             'totalQuestions' => ['required', 'integer', 'min:10', 'max:500'],
             'durationMinutes' => ['required', 'integer', 'min:10', 'max:600'],
             'passingPercentage' => ['required', 'numeric', 'min:1', 'max:100'],
             'categoryAllocations.*' => ['required', 'integer', 'min:0'],
-        ]);
+        ];
+        foreach ($this->topicAllocations as $topicId => $count) {
+            if ($count !== null && trim((string) $count) !== '') {
+                $rules["topicAllocations.{$topicId}"] = ['integer', 'min:0', 'max:500'];
+            }
+        }
+        $this->validate($rules);
 
         $sumAllocations = array_sum($this->categoryAllocations);
         if ($sumAllocations !== $this->totalQuestions) {
-            session()->flash('error', "Category question counts sum to {$sumAllocations}, which does not match total questions ({$this->totalQuestions}).");
+            $this->addError('categoryAllocations', "Category counts total {$sumAllocations}, but the exam total is {$this->totalQuestions}.");
             return;
         }
 
-        DB::transaction(function () {
+        $categories = ExamCategory::with('topics')->get()->keyBy('id');
+        $validCategoryIds = $categories->keys()->map(fn ($id) => (string) $id)->all();
+        $providedCategoryIds = array_map('strval', array_keys($this->categoryAllocations));
+        if (array_diff($validCategoryIds, $providedCategoryIds) !== [] || array_diff($providedCategoryIds, $validCategoryIds) !== []) {
+            $this->addError('categoryAllocations', 'Refresh the page before saving category allocations.');
+            return;
+        }
+
+        $validTopicIds = $categories->flatMap(fn (ExamCategory $category) => $category->topics->pluck('id'))->map(fn ($id) => (string) $id)->all();
+        foreach (array_keys($this->topicAllocations) as $topicId) {
+            if (!in_array((string) $topicId, $validTopicIds, true)) {
+                $this->addError('topicAllocations', 'Refresh the page before saving topic allocations.');
+                return;
+            }
+        }
+
+        foreach ($categories as $category) {
+            $topicIds = $category->topics->pluck('id')->map(fn ($id) => (string) $id)->all();
+            $provided = collect($this->topicAllocations)
+                ->filter(fn ($count, $topicId) => in_array((string) $topicId, $topicIds, true) && $count !== null && trim((string) $count) !== '');
+            if ($provided->isNotEmpty()) {
+                $topicTotal = (int) $provided->sum(fn ($count) => (int) $count);
+                $categoryTotal = (int) ($this->categoryAllocations[$category->id] ?? 0);
+                if ($topicTotal !== $categoryTotal) {
+                    $this->addError('topicAllocations', "{$category->name} topic counts total {$topicTotal}, but the category total is {$categoryTotal}.");
+                    return;
+                }
+            }
+        }
+
+        DB::transaction(function () use ($categories) {
             $blueprint = ExamBlueprint::findOrFail($this->blueprintId);
             $blueprint->update([
                 'name' => $this->examName,
@@ -97,7 +140,7 @@ class SettingsManager extends Component
 
             foreach ($this->categoryAllocations as $catId => $count) {
                 $pct = $this->totalQuestions > 0 ? round(($count / $this->totalQuestions) * 100, 2) : 0;
-                ExamBlueprintCategory::updateOrCreate(
+                $blueprintCategory = ExamBlueprintCategory::updateOrCreate(
                     [
                         'exam_blueprint_id' => $blueprint->id,
                         'category_id' => $catId,
@@ -107,6 +150,20 @@ class SettingsManager extends Component
                         'percentage' => $pct,
                     ]
                 );
+
+                $category = $categories->get($catId);
+                $topicIds = $category?->topics->pluck('id')->map(fn ($id) => (string) $id)->all() ?? [];
+                $provided = collect($this->topicAllocations)
+                    ->filter(fn ($topicCount, $topicId) => in_array((string) $topicId, $topicIds, true) && $topicCount !== null && trim((string) $topicCount) !== '');
+
+                $blueprintCategory->topicAllocations()->delete();
+                foreach ($provided as $topicId => $topicCount) {
+                    ExamBlueprintCategoryTopic::create([
+                        'exam_blueprint_category_id' => $blueprintCategory->id,
+                        'topic_id' => (int) $topicId,
+                        'question_count' => (int) $topicCount,
+                    ]);
+                }
             }
         });
 
@@ -171,7 +228,7 @@ class SettingsManager extends Component
 
     public function render(): View
     {
-        $categories = ExamCategory::orderBy('sort_order')->get();
+        $categories = ExamCategory::with('topics')->orderBy('sort_order')->get();
 
         return view('livewire.settings.settings-manager', [
             'categories' => $categories,

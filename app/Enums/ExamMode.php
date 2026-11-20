@@ -8,12 +8,14 @@ enum ExamMode: string
 {
     case Full = 'full';
     case Category = 'category';
+    case Topic = 'topic';
 
     public function label(): string
     {
         return match ($this) {
             self::Full => 'Full Practice Examination',
             self::Category => 'Category Practice',
+            self::Topic => 'Topic Practice',
         };
     }
 }

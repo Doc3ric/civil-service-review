@@ -6,6 +6,7 @@ namespace Tests\Feature\QuestionBank;
 
 use App\Enums\CategoryCode;
 use App\Enums\QuestionDifficulty;
+use App\Enums\QuestionOrigin;
 use App\Enums\QuestionStatus;
 use App\Models\ExamCategory;
 use App\Models\Question;
@@ -173,4 +174,79 @@ class QuestionBankTest extends TestCase
         $this->assertSame(5, $deleted);
         $this->assertSame(0, Question::count());
         $this->assertSame(0, \App\Models\QuestionChoice::count());
+    }
+
+    public function test_removing_sample_questions_keeps_manual_questions(): void
+    {
+        $sampleQuestion = $this->service->createQuestion([
+            'category_id' => $this->verbalCategory->id,
+            'question_text' => 'Built-in sample question to remove',
+            'choices' => ['A' => 'One', 'B' => 'Two', 'C' => 'Three', 'D' => 'Four'],
+            'correct_choice' => 'A',
+            'origin' => QuestionOrigin::Sample->value,
+        ]);
+        $manualQuestion = $this->service->createQuestion([
+            'category_id' => $this->verbalCategory->id,
+            'question_text' => 'Trusted manually entered question',
+            'choices' => ['A' => 'One', 'B' => 'Two', 'C' => 'Three', 'D' => 'Four'],
+            'correct_choice' => 'B',
+        ]);
+        $sampleQuestion->delete();
+
+        $this->assertSame(1, $this->service->deleteSampleQuestions());
+        $this->assertNull(Question::withTrashed()->find($sampleQuestion->id));
+        $this->assertDatabaseHas('questions', ['id' => $manualQuestion->id, 'origin' => QuestionOrigin::Manual->value]);
+    }
+
+    public function test_can_create_and_update_question_with_explanation_image(): void
+    {
+        $question = $this->service->createQuestion([
+            'category_id' => $this->verbalCategory->id,
+            'question_text' => 'Question with explanation diagram',
+            'choices' => ['A' => '1', 'B' => '2', 'C' => '3', 'D' => '4'],
+            'correct_choice' => 'A',
+            'explanation' => 'See diagram for step-by-step resolution.',
+            'explanation_image' => 'explanations/test_diagram.png',
+        ]);
+
+        $this->assertDatabaseHas('questions', [
+            'id' => $question->id,
+            'explanation_image' => 'explanations/test_diagram.png',
+        ]);
+        $this->assertNotNull($question->explanation_image_url);
+        $this->assertStringContainsString('storage/explanations/test_diagram.png', $question->explanation_image_url);
+
+        // Update with new image
+        $this->service->updateQuestion($question, [
+            'explanation_image' => 'explanations/updated_diagram.png',
+        ]);
+
+        $this->assertSame('explanations/updated_diagram.png', $question->fresh()->explanation_image);
+    }
+
+    public function test_livewire_can_upload_explanation_image_when_saving_question(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $fakeImage = \Illuminate\Http\UploadedFile::fake()->image('math_solution.png', 600, 400);
+
+        \Livewire\Livewire::actingAs($this->user)
+            ->test(\App\Livewire\Questions\QuestionList::class)
+            ->call('openCreateModal')
+            ->set('formCategoryId', $this->verbalCategory->id)
+            ->set('formQuestionText', 'What is the value of x in the diagram?')
+            ->set('formChoiceA', '10')
+            ->set('formChoiceB', '20')
+            ->set('formChoiceC', '30')
+            ->set('formChoiceD', '40')
+            ->set('formCorrectChoice', 'B')
+            ->set('formExplanation', 'Refer to the uploaded geometric triangle diagram.')
+            ->set('formExplanationImage', $fakeImage)
+            ->call('saveQuestion')
+            ->assertHasNoErrors();
+
+        $created = Question::where('question_text', 'What is the value of x in the diagram?')->first();
+        $this->assertNotNull($created);
+        $this->assertNotNull($created->explanation_image);
+        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($created->explanation_image);
     }}

@@ -118,6 +118,9 @@
                             <span class="text-xs font-bold text-[#174A8B] uppercase tracking-wider">
                                 {{ $item['category_name'] }}
                             </span>
+                            @if ($item['topic_name'])
+                                <span class="text-[11px] font-semibold text-slate-500">{{ $item['topic_name'] }}</span>
+                            @endif
                         </div>
 
                         <!-- Status Badge -->
@@ -168,12 +171,27 @@
                     </div>
 
                     <!-- Explanation Card -->
-                    @if ($item['explanation'])
+                    @if (!empty($item['explanation']) || !empty($item['explanation_image']))
                         <div class="p-4 rounded-xl bg-blue-50/70 border border-blue-100 text-xs text-blue-900 leading-relaxed flex items-start gap-2.5">
                             <i data-lucide="help-circle" class="w-4 h-4 text-[#174A8B] shrink-0 mt-0.5"></i>
-                            <div>
-                                <span class="font-bold text-[#174A8B] block mb-0.5">Explanation & Rationale:</span>
-                                {{ $item['explanation'] }}
+                            <div class="space-y-2 flex-1">
+                                <div>
+                                    <span class="font-bold text-[#174A8B] block mb-0.5">Explanation & Rationale:</span>
+                                    @if (!empty($item['explanation']))
+                                        <p class="whitespace-pre-line">{{ $item['explanation'] }}</p>
+                                    @endif
+                                </div>
+                                @if (!empty($item['explanation_image']))
+                                    <div class="pt-2 border-t border-blue-200/60">
+                                        <span class="block text-[11px] font-semibold text-[#174A8B] uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                                            <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                                            <span>Solution Diagram / Illustration:</span>
+                                        </span>
+                                        <a href="{{ $item['explanation_image'] }}" target="_blank" rel="noopener noreferrer" title="Click to view full image in new tab">
+                                            <img src="{{ $item['explanation_image'] }}" alt="Answer explanation diagram" class="max-h-72 rounded-lg border border-blue-200 shadow-xs hover:opacity-95 transition object-contain bg-white p-1">
+                                        </a>
+                                    </div>
+                                @endif
                             </div>
                         </div>
                     @endif

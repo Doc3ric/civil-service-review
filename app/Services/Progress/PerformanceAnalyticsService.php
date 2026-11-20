@@ -11,6 +11,7 @@ use App\Models\ExamCategory;
 use App\Models\Question;
 use App\Models\User;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class PerformanceAnalyticsService
 {
@@ -36,6 +37,15 @@ class PerformanceAnalyticsService
      *         correct_count: int,
      *         percentage: float,
      *         color: string
+     *     }>,
+     *     topic_stats: array<int, array{
+     *         topic_id: ?int,
+     *         category_id: ?int,
+     *         category_name: string,
+     *         name: string,
+     *         attempted_count: int,
+     *         correct_count: int,
+     *         percentage: float
      *     }>,
      *     recent_attempts: Collection<int, ExamAttempt>,
      *     chart_trends: array{
@@ -109,6 +119,46 @@ class PerformanceAnalyticsService
             ];
         }
 
+        $topicStats = DB::table('exam_attempt_questions as attempt_questions')
+            ->join('exam_attempts as attempts', 'attempts.id', '=', 'attempt_questions.exam_attempt_id')
+            ->leftJoin('exam_answers as answers', 'answers.exam_attempt_question_id', '=', 'attempt_questions.id')
+            ->leftJoin('question_topics as topics', 'topics.id', '=', 'attempt_questions.topic_id')
+            ->where('attempts.user_id', $user->id)
+            ->whereIn('attempts.status', [ExamStatus::Completed->value, ExamStatus::Expired->value])
+            ->whereNotNull('attempt_questions.topic_name_snapshot')
+            ->select([
+                'attempt_questions.topic_id',
+                'topics.category_id',
+                'attempt_questions.topic_name_snapshot as name',
+                'attempt_questions.category_name_snapshot as category_name',
+            ])
+            ->selectRaw('COUNT(attempt_questions.id) as attempted_count')
+            ->selectRaw('SUM(CASE WHEN answers.is_correct = 1 THEN 1 ELSE 0 END) as correct_count')
+            ->groupBy([
+                'attempt_questions.topic_id',
+                'topics.category_id',
+                'attempt_questions.topic_name_snapshot',
+                'attempt_questions.category_name_snapshot',
+            ])
+            ->orderBy('attempt_questions.category_name_snapshot')
+            ->orderBy('attempt_questions.topic_name_snapshot')
+            ->get()
+            ->map(function (object $row): array {
+                $attemptedCount = (int) $row->attempted_count;
+                $correctCount = (int) $row->correct_count;
+
+                return [
+                    'topic_id' => $row->topic_id !== null ? (int) $row->topic_id : null,
+                    'category_id' => $row->category_id !== null ? (int) $row->category_id : null,
+                    'category_name' => (string) $row->category_name,
+                    'name' => (string) $row->name,
+                    'attempted_count' => $attemptedCount,
+                    'correct_count' => $correctCount,
+                    'percentage' => $attemptedCount > 0 ? round(($correctCount / $attemptedCount) * 100, 2) : 0.0,
+                ];
+            })
+            ->all();
+
         // Identify Strongest and Weakest Category (with at least 1 attempt)
         $attemptedCategories = array_filter($categoryStats, function ($c): bool {
             return $c['attempted_count'] > 0;
@@ -164,6 +214,7 @@ class PerformanceAnalyticsService
             'strongest_category' => $strongest,
             'weakest_category' => $weakest,
             'category_stats' => $categoryStats,
+            'topic_stats' => $topicStats,
             'recent_attempts' => $recentAttempts,
             'chart_trends' => [
                 'labels' => $trendLabels,

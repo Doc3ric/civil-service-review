@@ -42,4 +42,12 @@ class ExamBlueprintCategory extends Model
     {
         return $this->belongsTo(ExamCategory::class, 'category_id');
     }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany<ExamBlueprintCategoryTopic, $this>
+     */
+    public function topicAllocations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ExamBlueprintCategoryTopic::class, 'exam_blueprint_category_id')->with('topic');
+    }
 }

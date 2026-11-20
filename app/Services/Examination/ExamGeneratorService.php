@@ -10,6 +10,7 @@ use App\Models\ExamAttempt;
 use App\Models\ExamAttemptQuestion;
 use App\Models\ExamBlueprint;
 use App\Models\ExamCategory;
+use App\Models\QuestionTopic;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -97,6 +98,43 @@ class ExamGeneratorService
         });
     }
 
+    public function generateTopicPractice(User $user, QuestionTopic $topic, int $questionCount, int $durationMinutes = 0): ExamAttempt
+    {
+        $topic->loadMissing('category');
+        $selectedQuestions = $this->selectionService->selectQuestionsForTopic($topic, $questionCount);
+
+        return DB::transaction(function () use ($user, $topic, $selectedQuestions, $durationMinutes) {
+            $startedAt = Carbon::now();
+            if ($durationMinutes <= 0) {
+                $durationMinutes = (int) max(10, ceil($selectedQuestions->count() * 1.2));
+            }
+            $deadlineAt = (clone $startedAt)->addMinutes($durationMinutes);
+
+            $attempt = ExamAttempt::create([
+                'user_id' => $user->id,
+                'exam_blueprint_id' => null,
+                'category_id' => $topic->category_id,
+                'topic_id' => $topic->id,
+                'title' => "{$topic->name} Practice ({$selectedQuestions->count()} Items)",
+                'mode' => ExamMode::Topic->value,
+                'total_questions' => $selectedQuestions->count(),
+                'correct_count' => 0,
+                'incorrect_count' => 0,
+                'unanswered_count' => $selectedQuestions->count(),
+                'score_percentage' => 0.00,
+                'status' => ExamStatus::InProgress->value,
+                'duration_minutes' => $durationMinutes,
+                'started_at' => $startedAt,
+                'deadline_at' => $deadlineAt,
+                'submitted_at' => null,
+            ]);
+
+            $this->createAttemptQuestions($attempt, $selectedQuestions);
+
+            return $attempt->load(['attemptQuestions.category', 'attemptQuestions.topic', 'category', 'topic']);
+        });
+    }
+
     /**
      * @param ExamAttempt $attempt
      * @param Collection<int, \App\Models\Question> $questions
@@ -111,10 +149,13 @@ class ExamGeneratorService
                 'exam_attempt_id' => $attempt->id,
                 'question_id' => $question->id,
                 'category_id' => $question->category_id,
+                'topic_id' => $question->topic_id,
                 'question_number' => $questionNumber++,
                 'question_text_snapshot' => $question->question_text,
                 'category_name_snapshot' => $question->category->name,
+                'topic_name_snapshot' => $question->topic?->name,
                 'explanation_snapshot' => $question->explanation,
+                'explanation_image_snapshot' => $question->explanation_image,
                 'correct_choice_label_snapshot' => $randomized['correct_choice_label'],
                 'shuffled_choices_json' => $randomized['shuffled_choices'],
             ]);

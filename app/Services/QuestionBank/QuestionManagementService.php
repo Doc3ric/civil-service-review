@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\QuestionBank;
 
 use App\Enums\QuestionDifficulty;
+use App\Enums\QuestionOrigin;
 use App\Enums\QuestionStatus;
 use App\Models\Question;
 use App\Models\QuestionChoice;
@@ -19,6 +20,7 @@ class QuestionManagementService
      * @param array{
      *     search?: ?string,
      *     category_id?: ?int,
+     *     topic_id?: ?int,
      *     difficulty?: ?string,
      *     status?: ?string,
      *     per_page?: int,
@@ -30,13 +32,14 @@ class QuestionManagementService
     public function getPaginatedQuestions(array $filters = []): LengthAwarePaginator
     {
         $query = Question::query()
-            ->with(['category', 'choices', 'importBatch']);
+            ->with(['category', 'topic', 'choices', 'importBatch']);
 
         if (!empty($filters['search'])) {
             $term = trim($filters['search']);
             $query->where(function (Builder $q) use ($term) {
                 $q->where('question_text', 'like', "%{$term}%")
                     ->orWhere('source', 'like', "%{$term}%")
+                    ->orWhereHas('topic', fn (Builder $tq) => $tq->where('name', 'like', "%{$term}%"))
                     ->orWhereHas('choices', function (Builder $cq) use ($term) {
                         $cq->where('choice_text', 'like', "%{$term}%");
                     });
@@ -45,6 +48,10 @@ class QuestionManagementService
 
         if (!empty($filters['category_id'])) {
             $query->where('category_id', (int) $filters['category_id']);
+        }
+
+        if (!empty($filters['topic_id'])) {
+            $query->where('topic_id', (int) $filters['topic_id']);
         }
 
         if (!empty($filters['difficulty'])) {
@@ -65,6 +72,7 @@ class QuestionManagementService
     /**
      * @param array{
      *     category_id: int,
+     *     topic_id?: ?int,
      *     question_text: string,
      *     choices: array{A: string, B: string, C: string, D: string},
      *     correct_choice: string,
@@ -72,7 +80,8 @@ class QuestionManagementService
      *     difficulty?: string,
      *     source?: ?string,
      *     status?: string,
-     *     import_batch_id?: ?int
+     *     import_batch_id?: ?int,
+     *     origin?: string
      * } $data
      */
     public function createQuestion(array $data): Question
@@ -84,10 +93,13 @@ class QuestionManagementService
 
             $question = Question::create([
                 'category_id' => $data['category_id'],
+                'topic_id' => $data['topic_id'] ?? null,
                 'import_batch_id' => $data['import_batch_id'] ?? null,
+                'origin' => $data['origin'] ?? (isset($data['import_batch_id']) ? QuestionOrigin::Imported->value : QuestionOrigin::Manual->value),
                 'question_text' => trim($data['question_text']),
                 'correct_choice' => strtoupper(trim($data['correct_choice'])),
                 'explanation' => isset($data['explanation']) ? trim($data['explanation']) : null,
+                'explanation_image' => $data['explanation_image'] ?? null,
                 'difficulty' => $data['difficulty'] ?? QuestionDifficulty::Medium->value,
                 'source' => isset($data['source']) ? trim($data['source']) : null,
                 'status' => $data['status'] ?? QuestionStatus::Published->value,
@@ -103,13 +115,14 @@ class QuestionManagementService
                 ]);
             }
 
-            return $question->load(['category', 'choices']);
+            return $question->load(['category', 'topic', 'choices']);
         });
     }
 
     /**
      * @param array{
      *     category_id?: int,
+     *     topic_id?: ?int,
      *     question_text?: string,
      *     choices?: array{A: string, B: string, C: string, D: string},
      *     correct_choice?: string,
@@ -128,6 +141,10 @@ class QuestionManagementService
                 $updates['category_id'] = $data['category_id'];
             }
 
+            if (array_key_exists('topic_id', $data)) {
+                $updates['topic_id'] = $data['topic_id'] ?: null;
+            }
+
             if (isset($data['question_text'])) {
                 $updates['question_text'] = trim($data['question_text']);
                 $updates['content_hash'] = Question::normalizeHash($data['question_text']);
@@ -139,6 +156,10 @@ class QuestionManagementService
 
             if (array_key_exists('explanation', $data)) {
                 $updates['explanation'] = $data['explanation'] ? trim($data['explanation']) : null;
+            }
+
+            if (array_key_exists('explanation_image', $data)) {
+                $updates['explanation_image'] = $data['explanation_image'] ?: null;
             }
 
             if (isset($data['difficulty'])) {
@@ -179,7 +200,7 @@ class QuestionManagementService
                 }
             }
 
-            return $question->fresh(['category', 'choices']);
+            return $question->fresh(['category', 'topic', 'choices']);
         });
     }
 
@@ -208,6 +229,8 @@ class QuestionManagementService
      */
     public function deleteAllQuestions(): int
     {
+        app(\App\Services\Backup\DatabaseBackupService::class)->createBeforeBulkChange();
+
         return DB::transaction(function (): int {
             // Choices are deleted first (FK constraint) then questions.
             // QuestionChoice has a cascading delete at the DB level, but we
@@ -215,7 +238,20 @@ class QuestionManagementService
             // behaviour correct regardless of DB-level cascade configuration.
             QuestionChoice::query()->delete();
 
-            return Question::query()->delete();
+            return Question::withTrashed()->forceDelete();
+        });
+    }
+
+    public function deleteSampleQuestions(): int
+    {
+        app(\App\Services\Backup\DatabaseBackupService::class)->createBeforeBulkChange();
+
+        return DB::transaction(function (): int {
+            $sampleQuestions = Question::withTrashed()->where('origin', QuestionOrigin::Sample->value);
+            $count = (clone $sampleQuestions)->count();
+            $sampleQuestions->forceDelete();
+
+            return $count;
         });
     }
 

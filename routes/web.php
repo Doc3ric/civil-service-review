@@ -59,3 +59,14 @@ Route::middleware('auth')->group(function () {
     // Preferences & Settings
     Route::get('/settings', SettingsManager::class)->name('settings');
 });
+
+// File Delivery for Explanation Images (ensures image delivery across Windows/Linux without symlink requirements)
+Route::get('/storage/explanations/{filename}', function (string $filename) {
+    // Prevent path traversal
+    $cleanFilename = basename($filename);
+    $path = storage_path('app/public/explanations/' . $cleanFilename);
+    if (!file_exists($path)) {
+        abort(404);
+    }
+    return response()->file($path);
+})->where('filename', '[A-Za-z0-9_\-\.]+')->name('storage.explanations');

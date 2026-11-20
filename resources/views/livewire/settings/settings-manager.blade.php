@@ -16,6 +16,11 @@
             <i data-lucide="settings" class="w-4 h-4"></i>
             <span>Account Profile</span>
         </button>
+        <button wire:click="$set('activeTab', 'data')"
+                class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 {{ $activeTab === 'data' ? 'bg-[#174A8B] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100' }}">
+            <i data-lucide="database-backup" class="w-4 h-4"></i>
+            <span>Data Backups</span>
+        </button>
     </div>
 
     <!-- Examination Settings Tab -->
@@ -29,6 +34,19 @@
             </div>
 
             <form wire:submit="saveExamSettings" class="space-y-6">
+                @if (session()->has('success'))
+                    <div role="status" class="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">{{ session('success') }}</div>
+                @endif
+                @if ($errors->any())
+                    <div role="alert" class="p-4 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800">
+                        <p class="font-bold mb-1">Blueprint was not saved. Please fix:</p>
+                        <ul class="list-disc list-inside space-y-1">
+                            @foreach ($errors->all() as $message)
+                                <li>{{ $message }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">Blueprint Title</label>
@@ -73,6 +91,38 @@
                             </div>
                         @endforeach
                     </div>
+                </div>
+
+                <div class="space-y-3 pt-2">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">Optional Topic Distribution</label>
+                        <p class="text-[11px] text-slate-500 mt-1">Leave every topic blank to choose randomly from the whole category. If you set any topic counts for a category, their sum must equal that category’s question count.</p>
+                    </div>
+                    <div class="space-y-3">
+                        @foreach ($categories as $cat)
+                            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                                <div class="flex items-center justify-between mb-3">
+                                    <span class="text-xs font-bold text-slate-900">{{ $cat->name }}</span>
+                                    <span class="text-[11px] text-slate-500">Category total: {{ $categoryAllocations[$cat->id] ?? 0 }}</span>
+                                </div>
+                                @if ($cat->topics->isEmpty())
+                                    <p class="text-[11px] text-slate-500">No topics configured. <a href="{{ route('categories.index') }}" class="text-[#174A8B] font-semibold hover:underline">Add topics</a> to enable topic allocations.</p>
+                                @else
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        @foreach ($cat->topics as $topic)
+                                            <label wire:key="allocation-topic-{{ $topic->id }}" class="flex items-center gap-3 p-2.5 bg-white rounded-lg border border-slate-200">
+                                                <span class="flex-1 text-xs font-medium text-slate-700">{{ $topic->name }}</span>
+                                                <input type="number" wire:model="topicAllocations.{{ $topic->id }}" min="0" max="500" placeholder="—"
+                                                       aria-label="{{ $topic->name }} question allocation"
+                                                       class="w-20 py-1.5 px-2 border border-slate-300 rounded-md text-xs focus:ring-2 focus:ring-[#2563EB]">
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                    @error('topicAllocations') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
                 </div>
 
                 <div class="pt-4 border-t border-slate-100 flex justify-end">
@@ -191,5 +241,9 @@
                 </div>
             </form>
         </div>
+    @endif
+
+    @if ($activeTab === 'data')
+        <livewire:settings.data-backup-manager />
     @endif
 </div>

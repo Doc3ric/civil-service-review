@@ -14,7 +14,9 @@ use App\Models\Question;
 use App\Models\QuestionChoice;
 use App\Models\QuestionImportBatch;
 use App\Models\QuestionImportRow;
+use App\Models\QuestionTopic;
 use App\Models\User;
+use App\Services\Backup\DatabaseBackupService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -44,6 +46,7 @@ class QuestionImportService
 
         $headers = [
             'category',
+            'topic',
             'question',
             'choice_a',
             'choice_b',
@@ -63,7 +66,7 @@ class QuestionImportService
         }
 
         // Style Header Row: Navy Blue #174A8B with White Bold text
-        $headerRange = 'A1:J1';
+        $headerRange = 'A1:K1';
         $sheet->getStyle($headerRange)->applyFromArray([
             'font' => [
                 'bold' => true,
@@ -84,6 +87,7 @@ class QuestionImportService
         $sampleRows = [
             [
                 'VERBAL',
+                'ANTONYMS',
                 'Choose the word most opposite in meaning to EPHEMERAL.',
                 'Fleeting',
                 'Permanent',
@@ -96,6 +100,7 @@ class QuestionImportService
             ],
             [
                 'ANALYTICAL',
+                '',
                 'SURGEON : SCALPEL ::',
                 'Author : Book',
                 'Sculptor : Chisel',
@@ -108,6 +113,7 @@ class QuestionImportService
             ],
             [
                 'NUMERICAL',
+                '',
                 'What is 35% of 2,400?',
                 '720',
                 '840',
@@ -120,6 +126,7 @@ class QuestionImportService
             ],
             [
                 'GENERAL',
+                '',
                 'Under RA 6713, public officials must submit their annual SALN on or before which date?',
                 'March 31',
                 'April 30',
@@ -140,6 +147,32 @@ class QuestionImportService
             }
             $rowNum++;
         }
+
+        $referenceSheet = $spreadsheet->createSheet();
+        $referenceSheet->setTitle('Valid Categories & Topics');
+        $referenceSheet->fromArray(['category', 'category_name', 'topic'], null, 'A1');
+        $referenceSheet->getStyle('A1:C1')->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '174A8B']],
+        ]);
+        $referenceRow = 2;
+        foreach (ExamCategory::with('topics')->orderBy('sort_order')->get() as $category) {
+            $code = $category->code instanceof \BackedEnum ? $category->code->value : (string) $category->code;
+            if ($category->topics->isEmpty()) {
+                $referenceSheet->fromArray([$code, $category->name, ''], null, "A{$referenceRow}");
+                $referenceRow++;
+                continue;
+            }
+
+            foreach ($category->topics as $topic) {
+                $referenceSheet->fromArray([$code, $category->name, $topic->name], null, "A{$referenceRow}");
+                $referenceRow++;
+            }
+        }
+        foreach (['A', 'B', 'C'] as $column) {
+            $referenceSheet->getColumnDimension($column)->setAutoSize(true);
+        }
+        $spreadsheet->setActiveSheetIndex(0);
 
         return $spreadsheet;
     }
@@ -188,10 +221,15 @@ class QuestionImportService
             throw new RuntimeException('Missing required columns: ' . implode(', ', $missing));
         }
 
+        $knownTopicsByCategory = ExamCategory::with('topics')->get()->mapWithKeys(function (ExamCategory $category): array {
+            $code = $category->code instanceof \BackedEnum ? $category->code->value : (string) $category->code;
+            return [$code => $category->topics->pluck('name')->map(fn (string $name) => mb_strtoupper($name))->all()];
+        })->all();
+
         $this->duplicateService->reset();
         $this->duplicateService->preloadExistingHashes();
 
-        return DB::transaction(function () use ($sheet, $highestRow, $headerMap, $originalFilename, $filePath, $user) {
+        return DB::transaction(function () use ($sheet, $highestRow, $headerMap, $originalFilename, $filePath, $user, $knownTopicsByCategory) {
             $batch = QuestionImportBatch::create([
                 'user_id' => $user?->id,
                 'original_filename' => $originalFilename,
@@ -223,6 +261,7 @@ class QuestionImportService
 
                 $rowData = [
                     'category' => $getVal('category'),
+                    'topic' => $getVal('topic'),
                     'question' => $getVal('question'),
                     'choice_a' => $getVal('choice_a'),
                     'choice_b' => $getVal('choice_b'),
@@ -247,7 +286,7 @@ class QuestionImportService
                 }
 
                 $total++;
-                $validation = $this->validationService->validateRow($rowData);
+                $validation = $this->validationService->validateRow($rowData, $knownTopicsByCategory);
 
                 $status = ImportRowStatus::Valid;
                 $errors = $validation['errors'];
@@ -271,6 +310,9 @@ class QuestionImportService
                     'row_number' => $row,
                     'raw_data_json' => json_encode($rowData),
                     'category_code' => $validation['sanitized']['category_code'] ?? ($rowData['category'] ?: null),
+                    'topic_name' => mb_strlen((string) $validation['sanitized']['topic_name']) <= 120
+                        ? ($validation['sanitized']['topic_name'] ?: null)
+                        : null,
                     'question_text' => $validation['sanitized']['question_text'] ?? ($rowData['question'] ?: null),
                     'choice_a' => $validation['sanitized']['choice_a'] ?? ($rowData['choice_a'] ?: null),
                     'choice_b' => $validation['sanitized']['choice_b'] ?? ($rowData['choice_b'] ?: null),
@@ -320,15 +362,20 @@ class QuestionImportService
      */
     public function executeImport(QuestionImportBatch $batch): array
     {
-        $categories = ExamCategory::all()->keyBy('code');
+        app(DatabaseBackupService::class)->createBeforeBulkChange();
 
-        return DB::transaction(function () use ($batch, $categories) {
+        $categories = ExamCategory::all()->keyBy('code');
+        $topicCache = [];
+
+        return DB::transaction(function () use ($batch, $categories, &$topicCache) {
             $importedCount = 0;
+            $newDuplicateCount = 0;
+            $newInvalidCount = 0;
             $now = Carbon::now()->toDateTimeString();
 
             $batch->rows()
                 ->where('status', ImportRowStatus::Valid->value)
-                ->chunkById(self::CHUNK_SIZE, function ($rows) use ($batch, $categories, &$importedCount, $now) {
+                ->chunkById(self::CHUNK_SIZE, function ($rows) use ($batch, $categories, &$importedCount, &$newDuplicateCount, &$newInvalidCount, &$topicCache, $now) {
                     $importedRowIds = [];
                     $choicesToInsert = [];
 
@@ -340,13 +387,45 @@ class QuestionImportService
                                 'status' => ImportRowStatus::Invalid->value,
                                 'error_messages_json' => ["Category '{$catCode}' not found."],
                             ]);
+                            $newInvalidCount++;
                             continue;
                         }
 
                         $hash = Question::normalizeHash((string) $row->question_text);
+                        if (Question::where('content_hash', $hash)->exists()) {
+                            $row->update([
+                                'status' => ImportRowStatus::Duplicate->value,
+                                'error_messages_json' => ['Duplicate question detected before import.'],
+                            ]);
+                            $newDuplicateCount++;
+                            continue;
+                        }
+
+                        $topicName = trim((string) $row->topic_name);
+                        $topicId = null;
+                        if ($topicName !== '') {
+                            $topicKey = $category->id . ':' . mb_strtoupper($topicName);
+                            if (!array_key_exists($topicKey, $topicCache)) {
+                                $topicCache[$topicKey] = QuestionTopic::where([
+                                    'category_id' => $category->id,
+                                    'name' => mb_strtoupper($topicName),
+                                ])->value('id');
+                            }
+                            if ($topicCache[$topicKey] === null) {
+                                $row->update([
+                                    'status' => ImportRowStatus::Invalid->value,
+                                    'error_messages_json' => ["Topic '{$topicName}' is no longer configured for {$category->name}."],
+                                ]);
+                                $newInvalidCount++;
+                                continue;
+                            }
+                            $topicId = $topicCache[$topicKey];
+                        }
 
                         $question = Question::create([
                             'category_id' => $category->id,
+                            'topic_id' => $topicId,
+                            'origin' => 'imported',
                             'import_batch_id' => $batch->id,
                             'question_text' => (string) $row->question_text,
                             'correct_choice' => (string) $row->correct_answer,
@@ -401,6 +480,8 @@ class QuestionImportService
             $batch->update([
                 'imported_rows' => $importedCount,
                 'skipped_rows' => $skippedCount,
+                'invalid_rows' => $batch->invalid_rows + $newInvalidCount,
+                'duplicate_rows' => $batch->duplicate_rows + $newDuplicateCount,
                 'status' => ImportStatus::Completed->value,
             ]);
 
@@ -408,8 +489,8 @@ class QuestionImportService
                 'total' => $batch->total_rows,
                 'imported' => $importedCount,
                 'skipped' => $skippedCount,
-                'duplicates' => $batch->duplicate_rows,
-                'invalid' => $batch->invalid_rows,
+                'duplicates' => $batch->duplicate_rows + $newDuplicateCount,
+                'invalid' => $batch->invalid_rows + $newInvalidCount,
             ];
         });
     }
@@ -426,6 +507,7 @@ class QuestionImportService
         $headers = [
             'Excel Row #',
             'Category',
+            'Topic',
             'Question',
             'Correct Answer',
             'Status',
@@ -438,7 +520,7 @@ class QuestionImportService
             $sheet->getColumnDimension($colLetter)->setAutoSize(true);
         }
 
-        $sheet->getStyle('A1:F1')->applyFromArray([
+        $sheet->getStyle('A1:G1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => [
                 'fillType' => Fill::FILL_SOLID,
@@ -456,10 +538,11 @@ class QuestionImportService
         foreach ($rows as $row) {
             $sheet->setCellValue("A{$line}", $row->row_number);
             $sheet->setCellValue("B{$line}", $row->category_code ?? '');
-            $sheet->setCellValue("C{$line}", $row->question_text ?? '');
-            $sheet->setCellValue("D{$line}", $row->correct_answer ?? '');
-            $sheet->setCellValue("E{$line}", $row->status->label());
-            $sheet->setCellValue("F{$line}", implode(' | ', $row->error_messages_json ?? []));
+            $sheet->setCellValue("C{$line}", $row->topic_name ?? '');
+            $sheet->setCellValue("D{$line}", $row->question_text ?? '');
+            $sheet->setCellValue("E{$line}", $row->correct_answer ?? '');
+            $sheet->setCellValue("F{$line}", $row->status->label());
+            $sheet->setCellValue("G{$line}", implode(' | ', $row->error_messages_json ?? []));
             $line++;
         }
 

@@ -31,7 +31,7 @@
                     </div>
                     <div>
                         <h3 class="text-base font-bold text-emerald-950">Batch Import Successfully Executed!</h3>
-                        <p class="text-xs text-emerald-700">All valid questions have been permanently stored in MySQL.</p>
+                        <p class="text-xs text-emerald-700">All valid questions have been stored in the question bank.</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -82,12 +82,14 @@
             <p class="text-xs text-slate-500 leading-relaxed mb-6 max-w-2xl">
                 Please upload your spreadsheet (.xlsx or .csv) adhering to the expected template headers:
                 <code class="px-1.5 py-0.5 rounded bg-slate-100 text-[#174A8B] font-mono text-[11px]">category</code>,
+                <code class="px-1.5 py-0.5 rounded bg-slate-100 text-[#174A8B] font-mono text-[11px]">topic</code>,
                 <code class="px-1.5 py-0.5 rounded bg-slate-100 text-[#174A8B] font-mono text-[11px]">question</code>,
                 <code class="px-1.5 py-0.5 rounded bg-slate-100 text-[#174A8B] font-mono text-[11px]">choice_a</code>,
                 <code class="px-1.5 py-0.5 rounded bg-slate-100 text-[#174A8B] font-mono text-[11px]">choice_b</code>,
                 <code class="px-1.5 py-0.5 rounded bg-slate-100 text-[#174A8B] font-mono text-[11px]">choice_c</code>,
                 <code class="px-1.5 py-0.5 rounded bg-slate-100 text-[#174A8B] font-mono text-[11px]">choice_d</code>,
                 <code class="px-1.5 py-0.5 rounded bg-slate-100 text-[#174A8B] font-mono text-[11px]">correct_answer</code>.
+                Use the exact topic names on the template’s <strong>Valid Categories &amp; Topics</strong> sheet; leave topic blank for a category without topics.
             </p>
 
             <form wire:submit="processUpload" class="space-y-4">
@@ -209,6 +211,9 @@
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-slate-100 text-slate-800">
                                         {{ $row->category_code ?: 'MISSING' }}
                                     </span>
+                                    @if ($row->topic_name)
+                                        <span class="block mt-1 text-[11px] font-semibold text-[#174A8B]">{{ $row->topic_name }}</span>
+                                    @endif
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="font-medium text-slate-900 mb-1">

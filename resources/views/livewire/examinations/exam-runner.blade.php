@@ -33,6 +33,9 @@
             </span>
             <span class="hidden sm:inline-block text-xs font-semibold text-slate-500">
                 {{ $currentQuestion->category_name_snapshot }}
+                @if ($currentQuestion->topic_name_snapshot)
+                    <span class="ml-2 text-slate-500">· {{ $currentQuestion->topic_name_snapshot }}</span>
+                @endif
             </span>
         </div>
 

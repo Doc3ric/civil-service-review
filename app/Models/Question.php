@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\QuestionDifficulty;
+use App\Enums\QuestionOrigin;
 use App\Enums\QuestionStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -19,10 +20,13 @@ class Question extends Model
 
     protected $fillable = [
         'category_id',
+        'topic_id',
         'import_batch_id',
+        'origin',
         'question_text',
         'correct_choice',
         'explanation',
+        'explanation_image',
         'difficulty',
         'source',
         'status',
@@ -34,7 +38,17 @@ class Question extends Model
         return [
             'difficulty' => QuestionDifficulty::class,
             'status' => QuestionStatus::class,
+            'origin' => QuestionOrigin::class,
         ];
+    }
+
+    public function getExplanationImageUrlAttribute(): ?string
+    {
+        if (empty($this->explanation_image)) {
+            return null;
+        }
+
+        return asset('storage/' . ltrim($this->explanation_image, '/'));
     }
 
     /**
@@ -52,6 +66,14 @@ class Question extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ExamCategory::class, 'category_id');
+    }
+
+    /**
+     * @return BelongsTo<QuestionTopic, $this>
+     */
+    public function topic(): BelongsTo
+    {
+        return $this->belongsTo(QuestionTopic::class, 'topic_id');
     }
 
     /**

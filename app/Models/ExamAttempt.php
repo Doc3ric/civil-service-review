@@ -22,6 +22,7 @@ class ExamAttempt extends Model
         'user_id',
         'exam_blueprint_id',
         'category_id',
+        'topic_id',
         'title',
         'mode',
         'total_questions',
@@ -77,6 +78,14 @@ class ExamAttempt extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ExamCategory::class, 'category_id');
+    }
+
+    /**
+     * @return BelongsTo<QuestionTopic, $this>
+     */
+    public function topic(): BelongsTo
+    {
+        return $this->belongsTo(QuestionTopic::class, 'topic_id');
     }
 
     /**

@@ -11,13 +11,14 @@ class QuestionValidationService
 {
     /**
      * @param array<string, mixed> $row
+     * @param array<string, array<int, string>>|null $knownTopicsByCategory
      * @return array{
      *     is_valid: bool,
      *     errors: array<int, string>,
      *     sanitized: array<string, mixed>
      * }
      */
-    public function validateRow(array $row): array
+    public function validateRow(array $row, ?array $knownTopicsByCategory = null): array
     {
         $errors = [];
         $sanitized = [];
@@ -48,6 +49,18 @@ class QuestionValidationService
             $errors[] = "Invalid category '{$rawCat}'. Must be VERBAL, ANALYTICAL, NUMERICAL, or GENERAL.";
         } else {
             $sanitized['category_code'] = $matchedCategory;
+        }
+
+        $topicName = mb_strtoupper(trim((string) ($row['topic'] ?? '')));
+        if (mb_strlen($topicName) > 120) {
+            $errors[] = 'Topic must be 120 characters or fewer.';
+        }
+        $sanitized['topic_name'] = $topicName;
+        if ($topicName !== '' && $matchedCategory !== null && $knownTopicsByCategory !== null) {
+            $knownTopics = $knownTopicsByCategory[$matchedCategory] ?? [];
+            if (!in_array($topicName, $knownTopics, true)) {
+                $errors[] = "Unknown topic '{$topicName}' for {$matchedCategory}. Add it in Categories before importing.";
+            }
         }
 
         // Question text
