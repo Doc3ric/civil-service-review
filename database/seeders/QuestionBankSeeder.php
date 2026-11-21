@@ -511,13 +511,13 @@ class QuestionBankSeeder extends Seeder
         }
 
         if (str_contains($text, '_____') || str_contains($text, 'fill in the blank')) {
-            return 'FILL IN THE BLANKS';
+            return 'CORRECT USAGE';
         }
 
         if (str_contains($text, 'error') || str_contains($text, 'which sentence demonstrates')) {
-            return 'ERROR RECOGNITION';
+            return 'IDENTIFYING ERRORS';
         }
 
-        return 'GRAMMAR AND USAGE';
+        return 'CORRECT USAGE';
     }
 }

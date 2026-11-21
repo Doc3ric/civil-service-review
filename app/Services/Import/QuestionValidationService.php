@@ -56,10 +56,13 @@ class QuestionValidationService
             $errors[] = 'Topic must be 120 characters or fewer.';
         }
         $sanitized['topic_name'] = $topicName;
-        if ($topicName !== '' && $matchedCategory !== null && $knownTopicsByCategory !== null) {
+        if ($matchedCategory !== null && $knownTopicsByCategory !== null) {
             $knownTopics = $knownTopicsByCategory[$matchedCategory] ?? [];
-            if (!in_array($topicName, $knownTopics, true)) {
-                $errors[] = "Unknown topic '{$topicName}' for {$matchedCategory}. Add it in Categories before importing.";
+
+            if ($topicName === '' && $knownTopics !== []) {
+                $errors[] = "Topic is required for {$matchedCategory}. Choose one from the template's Valid Categories & Topics sheet.";
+            } elseif ($topicName !== '' && !in_array($topicName, $knownTopics, true)) {
+                $errors[] = "Unknown topic '{$topicName}' for {$matchedCategory}. Choose a topic listed for that category.";
             }
         }
 

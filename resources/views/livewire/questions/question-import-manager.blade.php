@@ -89,7 +89,7 @@
                 <code class="px-1.5 py-0.5 rounded bg-slate-100 text-[#174A8B] font-mono text-[11px]">choice_c</code>,
                 <code class="px-1.5 py-0.5 rounded bg-slate-100 text-[#174A8B] font-mono text-[11px]">choice_d</code>,
                 <code class="px-1.5 py-0.5 rounded bg-slate-100 text-[#174A8B] font-mono text-[11px]">correct_answer</code>.
-                Use the exact topic names on the template’s <strong>Valid Categories &amp; Topics</strong> sheet; leave topic blank for a category without topics.
+                Choose the matching topic for each question using the template’s <strong>Valid Categories &amp; Topics</strong> sheet. A topic is required whenever its category has configured topics, so you can practice those questions by topic. It may be blank for a category without topics.
             </p>
 
             <form wire:submit="processUpload" class="space-y-4">

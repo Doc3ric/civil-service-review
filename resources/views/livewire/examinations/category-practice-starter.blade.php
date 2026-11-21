@@ -42,13 +42,13 @@
 
     <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-3">
         <label for="practice-topic" class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Narrow practice to a topic (optional)</label>
-        <select id="practice-topic" wire:model.live="selectedTopicId" class="block w-full py-2.5 px-3 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-[#2563EB]">
-            <option value="">All topics in {{ $currentCat?->name }}</option>
+        <select id="practice-topic" wire:key="practice-topic-{{ $currentCat?->id }}" wire:model.live="selectedTopicId" class="block w-full py-2.5 px-3 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-[#2563EB]">
+            <option value="">All topics in {{ $currentCat?->name }} ({{ $currentCat?->published_count ?? 0 }} available)</option>
             @foreach ($currentTopics as $topic)
                 <option value="{{ $topic->id }}">{{ $topic->name }} ({{ $topic->published_count }} available)</option>
             @endforeach
         </select>
-        <p class="text-[11px] text-slate-400">Choose a topic such as Antonyms to get a focused quiz. Add or rename topics from the Categories page.</p>
+        <p class="text-[11px] text-slate-400">Choose a topic to practice only its questions. Leave this set to all topics to mix questions from the selected category. Each topic shows its published question count.</p>
     </div>
 
     <!-- Question Count Selector -->

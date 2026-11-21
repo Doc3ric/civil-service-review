@@ -18,10 +18,16 @@ use App\Livewire\Results\ExamResultViewer;
 use App\Livewire\Settings\SettingsManager;
 use App\Livewire\Streaks\StreakCalendarView;
 use Illuminate\Support\Facades\Route;
+use Livewire\Mechanisms\HandleRequests\EndpointResolver;
 
 // Root redirect
 Route::get('/', function () {
     return auth()->check() ? redirect()->route('dashboard') : redirect()->route('login');
+});
+
+// Recover gracefully if a browser opens Livewire's POST-only update endpoint directly.
+Route::get(EndpointResolver::updatePath(), function () {
+    return redirect('/');
 });
 
 // Authentication

@@ -64,6 +64,43 @@ class ExcelImportTest extends TestCase
         $this->assertSame('ANTONYMS', $spreadsheet->getSheet(1)->getCell('C2')->getValue());
     }
 
+    public function test_topic_seeder_configures_general_verbal_and_analytical_topics(): void
+    {
+        $expectedTopics = [
+            CategoryCode::General->value => [
+                'BASIC CONSTITUTIONAL PRINCIPLES',
+                'CODE OF CONDUCT AND ETHICAL STANDARDS',
+                'PEACE AND HUMAN RIGHTS ISSUES AND CONCEPTS',
+                'ENVIRONMENTAL MANAGEMENT AND PROTECTION',
+                'CURRENT EVENTS & OTHER GENERAL INFORMATION',
+            ],
+            CategoryCode::Verbal->value => [
+                'SYNONYMS',
+                'ANTONYMS',
+                'CORRECT USAGE',
+                'IDENTIFYING ERRORS',
+                'IDIOMATIC EXPRESSIONS',
+                'READING COMPREHENSION',
+                'PARAGRAPH ORGANIZATION',
+            ],
+            CategoryCode::Analytical->value => [
+                'WORD ASSOCIATION',
+                'SINGLE-WORD ANALOGY',
+                'DOUBLE-WORD ANALOGY',
+                'LOGIC',
+                'ASSUMPTION AND CONCLUSION',
+                'DATA INTERPRETATION',
+                'ABSTRACT REASONING WITH TIPS & EXPLANATIONS',
+            ],
+        ];
+
+        foreach ($expectedTopics as $categoryCode => $topicNames) {
+            $category = ExamCategory::where('code', $categoryCode)->firstOrFail();
+
+            $this->assertEqualsCanonicalizing($topicNames, $category->topics()->pluck('name')->all());
+        }
+    }
+
     public function test_validation_service_validates_valid_and_invalid_rows(): void
     {
         // Valid row
@@ -105,6 +142,12 @@ class ExcelImportTest extends TestCase
         ]);
         $this->assertFalse($topicResult['is_valid']);
         $this->assertStringContainsString('Unknown topic', $topicResult['errors'][0]);
+
+        $unassignedTopicResult = $this->validationService->validateRow($validRow, [
+            'VERBAL' => ['ANTONYMS', 'SYNONYMS'],
+        ]);
+        $this->assertFalse($unassignedTopicResult['is_valid']);
+        $this->assertStringContainsString('Topic is required', $unassignedTopicResult['errors'][0]);
     }
 
     public function test_duplicate_detection_identifies_existing_question(): void
@@ -128,7 +171,7 @@ class ExcelImportTest extends TestCase
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 
-        $headers = ['category', 'question', 'choice_a', 'choice_b', 'choice_c', 'choice_d', 'correct_answer', 'explanation', 'difficulty', 'source'];
+        $headers = ['category', 'topic', 'question', 'choice_a', 'choice_b', 'choice_c', 'choice_d', 'correct_answer', 'explanation', 'difficulty', 'source'];
         foreach ($headers as $idx => $h) {
             $col = chr(65 + $idx);
             $sheet->setCellValue("{$col}1", $h);
@@ -136,28 +179,29 @@ class ExcelImportTest extends TestCase
 
         // Row 2: Valid
         $sheet->setCellValue('A2', 'VERBAL');
-        $sheet->setCellValue('B2', 'Imported Test Question One?');
-        $sheet->setCellValue('C2', 'Choice A');
-        $sheet->setCellValue('D2', 'Choice B');
-        $sheet->setCellValue('E2', 'Choice C');
-        $sheet->setCellValue('F2', 'Choice D');
-        $sheet->setCellValue('G2', 'A');
-        $sheet->setCellValue('H2', 'Explanation text');
+        $sheet->setCellValue('B2', 'ANTONYMS');
+        $sheet->setCellValue('C2', 'Imported Test Question One?');
+        $sheet->setCellValue('D2', 'Choice A');
+        $sheet->setCellValue('E2', 'Choice B');
+        $sheet->setCellValue('F2', 'Choice C');
+        $sheet->setCellValue('G2', 'Choice D');
+        $sheet->setCellValue('H2', 'A');
+        $sheet->setCellValue('I2', 'Explanation text');
 
         // Row 3: Valid
         $sheet->setCellValue('A3', 'NUMERICAL');
-        $sheet->setCellValue('B3', 'Imported Test Question Two?');
-        $sheet->setCellValue('C3', '10');
-        $sheet->setCellValue('D3', '20');
-        $sheet->setCellValue('E3', '30');
-        $sheet->setCellValue('F3', '40');
-        $sheet->setCellValue('G3', 'B');
+        $sheet->setCellValue('C3', 'Imported Test Question Two?');
+        $sheet->setCellValue('D3', '10');
+        $sheet->setCellValue('E3', '20');
+        $sheet->setCellValue('F3', '30');
+        $sheet->setCellValue('G3', '40');
+        $sheet->setCellValue('H3', 'B');
 
         // Row 4: Invalid (missing choices)
         $sheet->setCellValue('A4', 'NUMERICAL');
-        $sheet->setCellValue('B4', 'Imported Test Question Three (Invalid)?');
-        $sheet->setCellValue('C4', '10');
-        $sheet->setCellValue('G4', 'B');
+        $sheet->setCellValue('C4', 'Imported Test Question Three (Invalid)?');
+        $sheet->setCellValue('D4', '10');
+        $sheet->setCellValue('H4', 'B');
 
         $tempPath = tempnam(sys_get_temp_dir(), 'test_import_') . '.xlsx';
         $writer = new Xlsx($spreadsheet);
@@ -183,6 +227,10 @@ class ExcelImportTest extends TestCase
         $this->assertDatabaseHas('questions', ['question_text' => 'Imported Test Question One?', 'origin' => 'imported']);
         $this->assertDatabaseHas('questions', ['question_text' => 'Imported Test Question Two?']);
         $this->assertDatabaseMissing('questions', ['question_text' => 'Imported Test Question Three (Invalid)?']);
+        $this->assertSame(
+            'ANTONYMS',
+            Question::where('question_text', 'Imported Test Question One?')->firstOrFail()->topic?->name,
+        );
 
         if (file_exists($tempPath)) {
             @unlink($tempPath);
