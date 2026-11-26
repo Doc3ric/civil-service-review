@@ -1,9 +1,13 @@
 package com.civilservicereviewer.mobile
 
 import org.json.JSONObject
+import org.json.JSONArray
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -12,21 +16,26 @@ data class MobileBankSnapshot(
     val settings: LocalExamSettings,
 )
 
+data class MobileAttemptSyncResult(
+    val acceptedIds: List<String>,
+    val rejectedCount: Int,
+    val firstError: String?,
+)
+
 object MobileSyncClient {
-    suspend fun signInAndDownload(
+    suspend fun signIn(
         serverUrl: String,
         email: String,
         password: String,
         deviceName: String,
-    ): Pair<String, MobileBankSnapshot> = withContext(Dispatchers.IO) {
+    ): String = withContext(Dispatchers.IO) {
         val normalizedUrl = validateServerUrl(serverUrl)
         val login = JSONObject()
             .put("email", email.trim())
             .put("password", password)
             .put("device_name", deviceName)
-        val token = requestJson("POST", "$normalizedUrl/api/mobile/session", body = login)
+        requestJson("POST", "$normalizedUrl/api/mobile/session", body = login)
             .getString("token")
-        token to download(normalizedUrl, token)
     }
 
     suspend fun download(serverUrl: String, token: String): MobileBankSnapshot = withContext(Dispatchers.IO) {
@@ -70,9 +79,57 @@ object MobileSyncClient {
             categoryAllocationsJson = allocations,
             revision = payload.optString("revision"),
             syncedAt = System.currentTimeMillis(),
+            progressSnapshotJson = payload.optJSONObject("progress")?.toString() ?: "{}",
         )
 
         MobileBankSnapshot(questions = questions, settings = settings)
+    }
+
+    suspend fun uploadPendingAttempts(
+        serverUrl: String,
+        token: String,
+        attempts: List<PracticeAttempt>,
+    ): MobileAttemptSyncResult = withContext(Dispatchers.IO) {
+        if (attempts.isEmpty()) {
+            return@withContext MobileAttemptSyncResult(emptyList(), 0, null)
+        }
+
+        val attemptPayloads = JSONArray()
+        val dateFormatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US)
+        attempts.forEach { attempt ->
+            val answers = JSONArray()
+            val storedAnswers = runCatching { JSONArray(attempt.answersJson) }.getOrDefault(JSONArray())
+            for (index in 0 until storedAnswers.length()) {
+                val answer = storedAnswers.optJSONObject(index) ?: continue
+                val selectedAnswer = (answer.opt("selected_answer") as? String)?.takeIf(String::isNotBlank)
+                answers.put(JSONObject()
+                    .put("question_id", answer.optLong("question_id"))
+                    .put("selected_answer", selectedAnswer ?: JSONObject.NULL)
+                    .put("flagged", answer.optBoolean("flagged")))
+            }
+
+            attemptPayloads.put(JSONObject()
+                .put("client_attempt_id", attempt.clientAttemptId)
+                .put("title", attempt.title)
+                .put("mode", attempt.mode)
+                .put("passing_percentage", attempt.passingPercentage)
+                .put("duration_seconds", attempt.durationSeconds)
+                .put("completed_at", dateFormatter.format(Date(attempt.completedAt)))
+                .put("answers", answers))
+        }
+
+        val response = requestJson(
+            "POST",
+            "${validateServerUrl(serverUrl)}/api/mobile/attempts",
+            token = token,
+            body = JSONObject().put("attempts", attemptPayloads),
+        )
+        val accepted = response.optJSONArray("accepted_client_attempt_ids") ?: JSONArray()
+        val acceptedIds = (0 until accepted.length()).mapNotNull { accepted.optString(it).takeIf(String::isNotBlank) }
+        val rejected = response.optJSONArray("rejected") ?: JSONArray()
+        val firstError = rejected.optJSONObject(0)?.optString("message")?.takeIf(String::isNotBlank)
+
+        MobileAttemptSyncResult(acceptedIds, rejected.length(), firstError)
     }
 
     suspend fun revoke(serverUrl: String, token: String) = withContext(Dispatchers.IO) {

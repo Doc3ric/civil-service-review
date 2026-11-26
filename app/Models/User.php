@@ -50,6 +50,14 @@ class User extends Authenticatable
     }
 
     /**
+     * @return HasMany<MobilePracticeAttempt, $this>
+     */
+    public function mobilePracticeAttempts(): HasMany
+    {
+        return $this->hasMany(MobilePracticeAttempt::class, 'user_id');
+    }
+
+    /**
      * @return HasOne<UserSetting, $this>
      */
     public function settings(): HasOne

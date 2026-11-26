@@ -188,7 +188,14 @@
             </div>
 
             <div class="h-64 relative">
-                <canvas id="categoryChart"></canvas>
+                @if ($analytics['total_exams_completed'] === 0)
+                    <div class="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
+                        <i data-lucide="trending-up" class="w-8 h-8 mb-2"></i>
+                        <p class="text-xs">Category accuracy will appear after your first completed practice session.</p>
+                    </div>
+                @else
+                    <canvas id="categoryChart"></canvas>
+                @endif
             </div>
         </div>
     </div>
@@ -232,7 +239,7 @@
                             </td>
                             <td class="px-6 py-4 text-center">
                                 <div class="inline-flex items-center gap-2">
-                                    <span class="font-bold text-slate-900 text-sm">{{ number_format($cat['percentage'], 1) }}%</span>
+                                    <span class="font-bold text-slate-900 text-sm">{{ $cat['attempted_count'] > 0 ? number_format($cat['percentage'], 1) . '%' : '—' }}</span>
                                     <div class="w-16 h-2 rounded-full bg-slate-100 overflow-hidden hidden sm:block">
                                         <div class="h-full rounded-full" style="width: {{ $cat['percentage'] }}%; background-color: {{ $cat['color'] }}"></div>
                                     </div>

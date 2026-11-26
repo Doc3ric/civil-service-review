@@ -10,14 +10,25 @@ use App\Http\Controllers\Controller;
 use App\Models\ExamBlueprint;
 use App\Models\ExamBlueprintCategory;
 use App\Models\ExamCategory;
+use App\Models\MobileAccessToken;
 use App\Models\Question;
+use App\Models\User;
+use App\Services\Progress\MobileProgressSnapshotService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class MobileQuestionBankController extends Controller
 {
-    public function __invoke(): JsonResponse
+    public function __invoke(Request $request, MobileProgressSnapshotService $progressSnapshotService): JsonResponse
     {
+        $accessToken = $request->attributes->get('mobile_access_token');
+        $user = $accessToken instanceof MobileAccessToken ? $accessToken->user : null;
+
+        if (!$user instanceof User) {
+            abort(401, 'The mobile session is no longer valid. Sign in again to sync progress.');
+        }
+
         $questions = Question::query()
             ->with(['category:id,code,name', 'topic:id,name', 'choices:id,question_id,choice_label,choice_text'])
             ->where('status', QuestionStatus::Published->value)
@@ -82,6 +93,7 @@ class MobileQuestionBankController extends Controller
                 'categories' => $blueprintCategories,
             ],
             'categories' => $categories,
+            'progress' => $progressSnapshotService->forUser($user),
             'questions' => $questions->map(fn (Question $question): array => [
                 'id' => $question->id,
                 'category' => $question->category->code->value,

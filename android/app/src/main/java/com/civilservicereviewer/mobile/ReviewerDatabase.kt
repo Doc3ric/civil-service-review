@@ -2,9 +2,11 @@ package com.civilservicereviewer.mobile
 
 import android.content.Context
 import androidx.room.Dao
+import androidx.room.ColumnInfo
 import androidx.room.Database
 import androidx.room.Entity
 import androidx.room.Insert
+import androidx.room.Index
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
@@ -31,14 +33,23 @@ data class LocalQuestion(
     val source: String,
 )
 
-@Entity(tableName = "practice_attempts")
+@Entity(tableName = "practice_attempts", indices = [Index(value = ["clientAttemptId"], unique = true)])
 data class PracticeAttempt(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(defaultValue = "''") val clientAttemptId: String = "",
     val title: String,
     val category: String,
+    @ColumnInfo(defaultValue = "'category'") val mode: String = "category",
     val questionCount: Int,
     val correctCount: Int,
+    @ColumnInfo(defaultValue = "0.0") val scorePercentage: Double = 0.0,
+    @ColumnInfo(defaultValue = "80.0") val passingPercentage: Double = 80.0,
+    @ColumnInfo(defaultValue = "0") val durationSeconds: Int = 0,
     val completedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "'[]'") val categoryBreakdownJson: String = "[]",
+    @ColumnInfo(defaultValue = "'[]'") val topicBreakdownJson: String = "[]",
+    @ColumnInfo(defaultValue = "'[]'") val answersJson: String = "[]",
+    @ColumnInfo(defaultValue = "1") val synced: Boolean = true,
 )
 
 @Entity(tableName = "exam_settings")
@@ -51,6 +62,7 @@ data class LocalExamSettings(
     val categoryAllocationsJson: String,
     val revision: String,
     val syncedAt: Long,
+    @ColumnInfo(defaultValue = "'{}'") val progressSnapshotJson: String = "{}",
 )
 
 @Entity(tableName = "active_practice_session")
@@ -77,6 +89,12 @@ interface ReviewerDao {
 
     @Query("SELECT * FROM practice_attempts ORDER BY completedAt DESC")
     fun observeAttempts(): Flow<List<PracticeAttempt>>
+
+    @Query("SELECT * FROM practice_attempts WHERE synced = 0 ORDER BY completedAt ASC LIMIT 50")
+    suspend fun getPendingAttempts(): List<PracticeAttempt>
+
+    @Query("UPDATE practice_attempts SET synced = 1 WHERE clientAttemptId IN (:clientAttemptIds)")
+    suspend fun markAttemptsSynced(clientAttemptIds: List<String>)
 
     @Query("SELECT * FROM exam_settings WHERE id = 1 LIMIT 1")
     fun observeExamSettings(): Flow<LocalExamSettings?>
@@ -110,7 +128,7 @@ interface ReviewerDao {
     }
 }
 
-@Database(entities = [LocalQuestion::class, PracticeAttempt::class, LocalExamSettings::class, ActivePracticeSession::class], version = 3, exportSchema = false)
+@Database(entities = [LocalQuestion::class, PracticeAttempt::class, LocalExamSettings::class, ActivePracticeSession::class], version = 4, exportSchema = false)
 abstract class ReviewerDatabase : RoomDatabase() {
     abstract fun reviewerDao(): ReviewerDao
 
@@ -122,7 +140,7 @@ abstract class ReviewerDatabase : RoomDatabase() {
                 context.applicationContext,
                 ReviewerDatabase::class.java,
                 "civil-service-reviewer.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
         }
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -155,6 +173,24 @@ abstract class ReviewerDatabase : RoomDatabase() {
                         deadlineAt INTEGER NOT NULL
                     )""".trimIndent()
                 )
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE practice_attempts ADD COLUMN clientAttemptId TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE practice_attempts ADD COLUMN mode TEXT NOT NULL DEFAULT 'category'")
+                database.execSQL("ALTER TABLE practice_attempts ADD COLUMN scorePercentage REAL NOT NULL DEFAULT 0.0")
+                database.execSQL("ALTER TABLE practice_attempts ADD COLUMN passingPercentage REAL NOT NULL DEFAULT 80.0")
+                database.execSQL("ALTER TABLE practice_attempts ADD COLUMN durationSeconds INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE practice_attempts ADD COLUMN categoryBreakdownJson TEXT NOT NULL DEFAULT '[]'")
+                database.execSQL("ALTER TABLE practice_attempts ADD COLUMN topicBreakdownJson TEXT NOT NULL DEFAULT '[]'")
+                database.execSQL("ALTER TABLE practice_attempts ADD COLUMN answersJson TEXT NOT NULL DEFAULT '[]'")
+                database.execSQL("ALTER TABLE practice_attempts ADD COLUMN synced INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("UPDATE practice_attempts SET clientAttemptId = 'legacy-' || id")
+                database.execSQL("UPDATE practice_attempts SET scorePercentage = CASE WHEN questionCount > 0 THEN (correctCount * 100.0 / questionCount) ELSE 0.0 END")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_practice_attempts_clientAttemptId ON practice_attempts(clientAttemptId)")
+                database.execSQL("ALTER TABLE exam_settings ADD COLUMN progressSnapshotJson TEXT NOT NULL DEFAULT '{}'")
             }
         }
     }

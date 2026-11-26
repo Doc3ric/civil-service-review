@@ -8,6 +8,7 @@ use App\Enums\CategoryCode;
 use App\Enums\ExamStatus;
 use App\Models\ExamAttempt;
 use App\Models\ExamCategory;
+use App\Models\MobilePracticeAttempt;
 use App\Models\Question;
 use App\Models\User;
 use Illuminate\Support\Collection;
@@ -54,7 +55,7 @@ class PerformanceAnalyticsService
      *     },
      *     chart_categories: array{
      *         labels: array<int, string>,
-     *         scores: array<int, float>,
+     *         scores: array<int, ?float>,
      *         colors: array<int, string>
      *     }
      * }
@@ -69,15 +70,26 @@ class PerformanceAnalyticsService
             ->orderBy('submitted_at', 'asc')
             ->get();
 
-        $totalExamsCompleted = $completedAttempts->count();
+        $mobileAttempts = MobilePracticeAttempt::query()
+            ->where('user_id', $user->id)
+            ->orderBy('completed_at')
+            ->get();
+
+        $totalExamsCompleted = $completedAttempts->count() + $mobileAttempts->count();
+        $scoreTotal = (float) $completedAttempts->sum('score_percentage')
+            + (float) $mobileAttempts->sum('score_percentage');
 
         $averageScore = $totalExamsCompleted > 0
-            ? round((float) $completedAttempts->avg('score_percentage'), 2)
+            ? round($scoreTotal / $totalExamsCompleted, 2)
             : 0.00;
 
-        $passedCount = $completedAttempts->filter(function (ExamAttempt $a): bool {
+        $webPassedCount = $completedAttempts->filter(function (ExamAttempt $a): bool {
             return (float) $a->score_percentage >= 80.00;
         })->count();
+        $mobilePassedCount = $mobileAttempts->filter(function (MobilePracticeAttempt $attempt): bool {
+            return (float) $attempt->score_percentage >= (float) $attempt->passing_percentage;
+        })->count();
+        $passedCount = $webPassedCount + $mobilePassedCount;
 
         $passingRate = $totalExamsCompleted > 0
             ? round(($passedCount / $totalExamsCompleted) * 100, 2)
@@ -97,6 +109,14 @@ class PerformanceAnalyticsService
             $correctTotal = 0;
 
             foreach ($completedAttempts as $attempt) {
+                $breakdown = $attempt->category_scores_json ?? [];
+                if (isset($breakdown[$catCode])) {
+                    $attemptedTotal += (int) ($breakdown[$catCode]['total'] ?? 0);
+                    $correctTotal += (int) ($breakdown[$catCode]['correct'] ?? 0);
+                }
+            }
+
+            foreach ($mobileAttempts as $attempt) {
                 $breakdown = $attempt->category_scores_json ?? [];
                 if (isset($breakdown[$catCode])) {
                     $attemptedTotal += (int) ($breakdown[$catCode]['total'] ?? 0);
@@ -159,6 +179,59 @@ class PerformanceAnalyticsService
             })
             ->all();
 
+        $topicStatsByKey = [];
+        foreach ($topicStats as $topicStat) {
+            $key = implode('|', [
+                $topicStat['category_id'] ?? '',
+                $topicStat['topic_id'] ?? '',
+                $topicStat['category_name'],
+                $topicStat['name'],
+            ]);
+            $topicStatsByKey[$key] = $topicStat;
+        }
+
+        foreach ($mobileAttempts as $attempt) {
+            foreach ($attempt->topic_scores_json ?? [] as $topicBreakdown) {
+                $topicName = $topicBreakdown['name'] ?? null;
+                if ($topicName === null || $topicName === '') {
+                    continue;
+                }
+
+                $topicStat = [
+                    'topic_id' => isset($topicBreakdown['topic_id']) ? (int) $topicBreakdown['topic_id'] : null,
+                    'category_id' => isset($topicBreakdown['category_id']) ? (int) $topicBreakdown['category_id'] : null,
+                    'category_name' => (string) $topicBreakdown['category_name'],
+                    'name' => (string) $topicName,
+                    'attempted_count' => (int) $topicBreakdown['total'],
+                    'correct_count' => (int) $topicBreakdown['correct'],
+                ];
+                $key = implode('|', [
+                    $topicStat['category_id'] ?? '',
+                    $topicStat['topic_id'] ?? '',
+                    $topicStat['category_name'],
+                    $topicStat['name'],
+                ]);
+
+                if (isset($topicStatsByKey[$key])) {
+                    $topicStatsByKey[$key]['attempted_count'] += $topicStat['attempted_count'];
+                    $topicStatsByKey[$key]['correct_count'] += $topicStat['correct_count'];
+                } else {
+                    $topicStatsByKey[$key] = $topicStat;
+                }
+            }
+        }
+
+        $topicStats = array_values(array_map(function (array $topicStat): array {
+            $topicStat['percentage'] = $topicStat['attempted_count'] > 0
+                ? round(($topicStat['correct_count'] / $topicStat['attempted_count']) * 100, 2)
+                : 0.0;
+
+            return $topicStat;
+        }, $topicStatsByKey));
+        usort($topicStats, function (array $left, array $right): int {
+            return [$left['category_name'], $left['name']] <=> [$right['category_name'], $right['name']];
+        });
+
         // Identify Strongest and Weakest Category (with at least 1 attempt)
         $attemptedCategories = array_filter($categoryStats, function ($c): bool {
             return $c['attempted_count'] > 0;
@@ -187,9 +260,26 @@ class PerformanceAnalyticsService
         $trendLabels = [];
         $trendScores = [];
 
-        foreach ($completedAttempts->take(-10) as $attempt) {
-            $trendLabels[] = $attempt->submitted_at ? $attempt->submitted_at->format('M d') : 'Exam #' . $attempt->id;
-            $trendScores[] = (float) $attempt->score_percentage;
+        $trendEvents = collect();
+        foreach ($completedAttempts as $attempt) {
+            if ($attempt->submitted_at !== null) {
+                $trendEvents->push([
+                    'timestamp' => $attempt->submitted_at->timestamp,
+                    'label' => $attempt->submitted_at->format('M d'),
+                    'score' => (float) $attempt->score_percentage,
+                ]);
+            }
+        }
+        foreach ($mobileAttempts as $attempt) {
+            $trendEvents->push([
+                'timestamp' => $attempt->completed_at->timestamp,
+                'label' => 'Android · '.$attempt->completed_at->format('M d'),
+                'score' => (float) $attempt->score_percentage,
+            ]);
+        }
+        foreach ($trendEvents->sortBy('timestamp')->take(-10) as $trendEvent) {
+            $trendLabels[] = $trendEvent['label'];
+            $trendScores[] = $trendEvent['score'];
         }
 
         // Chart Data: Category Radar/Bar
@@ -199,7 +289,7 @@ class PerformanceAnalyticsService
 
         foreach ($categoryStats as $c) {
             $catLabels[] = $c['name'];
-            $catScores[] = $c['percentage'];
+            $catScores[] = $c['attempted_count'] > 0 ? $c['percentage'] : null;
             $catColors[] = $c['color'];
         }
 

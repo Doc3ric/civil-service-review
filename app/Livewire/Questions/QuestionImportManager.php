@@ -13,16 +13,23 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 use Livewire\WithFileUploads;
+use Livewire\WithPagination;
 
 class QuestionImportManager extends Component
 {
     use WithFileUploads;
+    use WithPagination;
 
     public $file = null;
     public ?int $activeBatchId = null;
     public string $rowFilter = 'all'; // all, valid, invalid, duplicate
     public bool $isImporting = false;
     public ?array $importSummary = null;
+
+    public function updatedRowFilter(): void
+    {
+        $this->resetPage(pageName: 'previewRowsPage');
+    }
 
     public function mount(?int $batch = null): void
     {
@@ -52,6 +59,7 @@ class QuestionImportManager extends Component
         try {
             $batch = $importService->parseAndStageImport($fullPath, $originalName, Auth::user());
             $this->activeBatchId = $batch->id;
+            $this->resetPage(pageName: 'previewRowsPage');
             $this->importSummary = null;
             $this->file = null;
             session()->flash('success', "File '{$originalName}' parsed successfully. Please preview and confirm import.");
@@ -83,6 +91,7 @@ class QuestionImportManager extends Component
     public function cancelPreview(): void
     {
         $this->activeBatchId = null;
+        $this->resetPage(pageName: 'previewRowsPage');
         $this->importSummary = null;
         $this->file = null;
     }
@@ -114,7 +123,7 @@ class QuestionImportManager extends Component
                 $query->where('status', ImportRowStatus::Duplicate->value);
             }
 
-            $previewRows = $query->paginate(20);
+            $previewRows = $query->paginate(20, pageName: 'previewRowsPage');
         }
 
         return view('livewire.questions.question-import-manager', [
