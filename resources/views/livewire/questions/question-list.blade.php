@@ -147,7 +147,7 @@
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="font-medium text-slate-900 line-clamp-2 max-w-lg">
-                                        {{ $q->question_text }}
+                                        {!! \App\Services\QuestionBank\QuestionTextFormatter::toHtml($q->question_text) !!}
                                     </div>
                                     <div class="mt-1 flex flex-wrap items-center gap-1.5">
                                         <span class="inline-flex px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-semibold text-slate-600">
@@ -261,7 +261,7 @@
                         <div>
                             <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Question</h4>
                             <p class="text-base font-semibold text-slate-900 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-200">
-                                {{ $viewingQuestion->question_text }}
+                                {!! \App\Services\QuestionBank\QuestionTextFormatter::toHtml($viewingQuestion->question_text) !!}
                             </p>
                         </div>
 
@@ -414,9 +414,26 @@
                         </div>
 
                         <!-- Question Text -->
-                        <div>
+                        <div x-data="{
+                            boldSelectedText() {
+                                const textarea = this.$refs.questionText;
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const selectedText = textarea.value.slice(start, end);
+                                textarea.setRangeText('**' + selectedText + '**', start, end, 'end');
+                                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                                textarea.focus();
+                                textarea.setSelectionRange(start + 2, end + 2);
+                            }
+                        }">
                             <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">Question Text *</label>
-                            <textarea wire:model="formQuestionText" rows="3" required placeholder="Enter the complete question prompt..."
+                            <div class="flex items-center gap-2 mb-2">
+                                <button type="button" @mousedown.prevent @click="boldSelectedText()"
+                                        class="px-2.5 py-1 rounded-md border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-100"
+                                        title="Bold selected question text" aria-label="Bold selected question text">B</button>
+                                <span class="text-[11px] text-slate-500">Select text, then click B. It appears bold after saving.</span>
+                            </div>
+                            <textarea x-ref="questionText" wire:model="formQuestionText" rows="3" required placeholder="Enter the complete question prompt..."
                                       class="block w-full p-3 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-[#2563EB]"></textarea>
                             @error('formQuestionText') <p class="text-[11px] text-red-600 mt-1">{{ $message }}</p> @enderror
                         </div>

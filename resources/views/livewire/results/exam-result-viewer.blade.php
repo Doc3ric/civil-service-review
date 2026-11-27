@@ -144,7 +144,7 @@
 
                     <!-- Question Prompt -->
                     <div class="text-sm sm:text-base font-semibold text-slate-900 leading-relaxed">
-                        {{ $item['question_text'] }}
+                        {!! \App\Services\QuestionBank\QuestionTextFormatter::toHtml($item['question_text']) !!}
                     </div>
 
                     <!-- Choices Grid -->

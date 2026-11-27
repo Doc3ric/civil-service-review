@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\QuestionDifficulty;
 use App\Enums\QuestionOrigin;
 use App\Enums\QuestionStatus;
+use App\Services\QuestionBank\QuestionTextFormatter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -56,7 +57,8 @@ class Question extends Model
      */
     public static function normalizeHash(string $questionText): string
     {
-        $normalized = mb_strtolower(trim(preg_replace('/\s+/', ' ', $questionText) ?? ''));
+        $plainText = QuestionTextFormatter::toPlainText($questionText);
+        $normalized = mb_strtolower(trim(preg_replace('/\s+/', ' ', $plainText) ?? ''));
         return hash('sha256', $normalized);
     }
 

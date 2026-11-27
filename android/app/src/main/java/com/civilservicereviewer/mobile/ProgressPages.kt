@@ -229,7 +229,7 @@ fun MissedQuestionsPage(attempts: List<PracticeAttempt>, settings: LocalExamSett
                         Surface(color = Color(0xFFFFF1F1), shape = RoundedCornerShape(50)) {
                             Text("${question.category}${if (question.topic.isBlank()) "" else "  ·  ${question.topic}"}", color = ProgressRed, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
                         }
-                        Text(question.prompt, color = ProgressInk, style = MaterialTheme.typography.titleSmall, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 10.dp))
+                        Text(formattedQuestionPrompt(question.prompt), color = ProgressInk, style = MaterialTheme.typography.titleSmall, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 10.dp))
                         Text("Your answer  ·  ${missed.selectedAnswer ?: "Unanswered"}", color = ProgressRed, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 9.dp))
                         Text("Correct answer  ·  ${question.correctAnswer}", color = Color(0xFF15803D), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
                         Text(question.explanation.ifBlank { "No explanation was provided." }, color = ProgressMuted, style = MaterialTheme.typography.bodySmall, lineHeight = 19.sp, modifier = Modifier.padding(top = 8.dp))

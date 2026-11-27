@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Storage;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
+use Throwable;
 
 class QuestionList extends Component
 {
@@ -265,10 +266,15 @@ class QuestionList extends Component
 
     public function deleteAllQuestions(QuestionManagementService $service): void
     {
-        $count = $service->deleteAllQuestions();
-        $this->showDeleteAllModal = false;
-        $this->resetPage();
-        session()->flash('success', "All {$count} questions have been permanently deleted from the Question Bank.");
+        try {
+            $count = $service->deleteAllQuestions();
+            $this->showDeleteAllModal = false;
+            $this->resetPage();
+            session()->flash('success', "All {$count} questions have been permanently deleted from the Question Bank.");
+        } catch (Throwable $exception) {
+            report($exception);
+            session()->flash('error', 'The questions could not be deleted. ' . $exception->getMessage());
+        }
     }
 
     public function confirmDeleteSampleQuestions(): void

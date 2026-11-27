@@ -73,7 +73,7 @@
 
                 <!-- Question Prompt -->
                 <div class="text-base sm:text-lg font-semibold text-slate-900 leading-relaxed">
-                    {{ $currentQuestion->question_text_snapshot }}
+                    {!! \App\Services\QuestionBank\QuestionTextFormatter::toHtml($currentQuestion->question_text_snapshot) !!}
                 </div>
 
                 <!-- 4 Choices List -->

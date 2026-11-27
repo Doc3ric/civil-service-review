@@ -12,6 +12,7 @@ use App\Models\ExamCategory;
 use App\Models\Question;
 use App\Models\User;
 use App\Services\QuestionBank\QuestionManagementService;
+use App\Services\QuestionBank\QuestionTextFormatter;
 use Database\Seeders\ExamCategorySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use InvalidArgumentException;
@@ -144,6 +145,34 @@ class QuestionBankTest extends TestCase
         $this->assertSame(QuestionStatus::Published, $question->fresh()->status);
     }
 
+    public function test_question_editor_saves_bold_text_and_renders_it_safely(): void
+    {
+        $question = $this->service->createQuestion([
+            'category_id' => $this->verbalCategory->id,
+            'question_text' => 'What is the synonym of candid?',
+            'choices' => ['A' => 'Frank', 'B' => 'Quiet', 'C' => 'Hidden', 'D' => 'Late'],
+            'correct_choice' => 'A',
+        ]);
+
+        \Livewire\Livewire::actingAs($this->user)
+            ->test(\App\Livewire\Questions\QuestionList::class)
+            ->call('openEditModal', $question->id)
+            ->assertSee('Bold selected question text')
+            ->set('formQuestionText', 'What is the synonym of **candid**?')
+            ->call('saveQuestion')
+            ->assertHasNoErrors();
+
+        $updatedQuestion = $question->fresh();
+        $this->assertSame('What is the synonym of **candid**?', $updatedQuestion->question_text);
+        $this->assertSame(Question::normalizeHash('What is the synonym of candid?'), $updatedQuestion->content_hash);
+        $this->assertSame('What is the synonym of candid?', QuestionTextFormatter::toPlainText($updatedQuestion->question_text));
+        $this->assertSame(
+            'What is the synonym of <strong>candid</strong>?',
+            QuestionTextFormatter::toHtml($updatedQuestion->question_text),
+        );
+        $this->assertSame('&lt;script&gt;<strong>candid</strong>&lt;/script&gt;', QuestionTextFormatter::toHtml('<script>**candid**</script>'));
+    }
+
     public function test_delete_all_questions_removes_every_question_and_choice(): void
     {
         $analyticalCategory = ExamCategory::where('code', CategoryCode::Analytical->value)->firstOrFail();
@@ -173,6 +202,27 @@ class QuestionBankTest extends TestCase
 
         $this->assertSame(5, $deleted);
         $this->assertSame(0, Question::count());
+        $this->assertSame(0, \App\Models\QuestionChoice::count());
+    }
+
+    public function test_delete_all_confirmation_removes_questions_through_livewire(): void
+    {
+        $question = $this->service->createQuestion([
+            'category_id' => $this->verbalCategory->id,
+            'question_text' => 'Question deleted through the confirmation dialog?',
+            'choices' => ['A' => 'One', 'B' => 'Two', 'C' => 'Three', 'D' => 'Four'],
+            'correct_choice' => 'A',
+        ]);
+
+        \Livewire\Livewire::actingAs($this->user)
+            ->test(\App\Livewire\Questions\QuestionList::class)
+            ->call('confirmDeleteAll')
+            ->assertSet('showDeleteAllModal', true)
+            ->call('deleteAllQuestions')
+            ->assertHasNoErrors()
+            ->assertSet('showDeleteAllModal', false);
+
+        $this->assertNull(Question::withTrashed()->find($question->id));
         $this->assertSame(0, \App\Models\QuestionChoice::count());
     }
 

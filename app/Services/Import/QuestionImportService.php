@@ -510,6 +510,8 @@ class QuestionImportService
             'Topic',
             'Question',
             'Correct Answer',
+            'Matches Excel Row #',
+            'Matching Question',
             'Status',
             'Error Messages',
         ];
@@ -520,7 +522,7 @@ class QuestionImportService
             $sheet->getColumnDimension($colLetter)->setAutoSize(true);
         }
 
-        $sheet->getStyle('A1:G1')->applyFromArray([
+        $sheet->getStyle('A1:I1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => [
                 'fillType' => Fill::FILL_SOLID,
@@ -529,20 +531,42 @@ class QuestionImportService
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ]);
 
-        $rows = $batch->rows()
-            ->whereNotNull('error_messages_json')
-            ->orderBy('row_number')
-            ->get();
+        $rows = $batch->rows()->orderBy('row_number')->get();
+        $firstQuestionByHash = [];
 
         $line = 2;
         foreach ($rows as $row) {
+            $errors = $row->error_messages_json ?? [];
+            $isDuplicate = collect($errors)->contains(fn (string $error): bool => str_contains($error, 'Duplicate question'));
+            $questionText = (string) $row->question_text;
+            $questionHash = $questionText !== '' ? Question::normalizeHash($questionText) : null;
+            $matchingRow = $isDuplicate && $questionHash !== null
+                ? ($firstQuestionByHash[$questionHash] ?? null)
+                : null;
+
+            if ($questionHash !== null && ($isDuplicate || $errors === [])) {
+                $firstQuestionByHash[$questionHash] ??= $row;
+            }
+
+            if ($errors === []) {
+                continue;
+            }
+
+            if ($isDuplicate) {
+                $errors = [$matchingRow !== null
+                    ? "Duplicate of Excel row {$matchingRow->row_number}: the question text matches after ignoring case and extra spaces."
+                    : 'This question text already exists in the Question Bank.'];
+            }
+
             $sheet->setCellValue("A{$line}", $row->row_number);
             $sheet->setCellValue("B{$line}", $row->category_code ?? '');
             $sheet->setCellValue("C{$line}", $row->topic_name ?? '');
             $sheet->setCellValue("D{$line}", $row->question_text ?? '');
             $sheet->setCellValue("E{$line}", $row->correct_answer ?? '');
-            $sheet->setCellValue("F{$line}", $row->status->label());
-            $sheet->setCellValue("G{$line}", implode(' | ', $row->error_messages_json ?? []));
+            $sheet->setCellValue("F{$line}", $matchingRow?->row_number ?? '');
+            $sheet->setCellValue("G{$line}", $matchingRow?->question_text ?? '');
+            $sheet->setCellValue("H{$line}", $row->status->label());
+            $sheet->setCellValue("I{$line}", implode(' | ', $errors));
             $line++;
         }
 

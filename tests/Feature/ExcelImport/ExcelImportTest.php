@@ -10,6 +10,7 @@ use App\Enums\ImportStatus;
 use App\Models\ExamCategory;
 use App\Models\Question;
 use App\Models\QuestionImportBatch;
+use App\Models\QuestionImportRow;
 use App\Models\User;
 use App\Services\Import\DuplicateDetectionService;
 use App\Services\Import\QuestionImportService;
@@ -163,6 +164,47 @@ class ExcelImportTest extends TestCase
         $this->assertTrue($this->duplicateService->existsInDatabase('Unique test question content.'));
         $this->assertTrue($this->duplicateService->isDuplicate('Unique  test  question  content. '));
         $this->assertFalse($this->duplicateService->existsInDatabase('A completely different question.'));
+    }
+
+    public function test_error_report_compares_duplicate_rows_and_explains_invalid_answers(): void
+    {
+        $batch = QuestionImportBatch::create([
+            'user_id' => $this->user->id,
+            'original_filename' => 'questions.xlsx',
+            'storage_path' => 'imports/questions.xlsx',
+            'total_rows' => 4,
+            'imported_rows' => 1,
+            'invalid_rows' => 1,
+            'duplicate_rows' => 2,
+            'skipped_rows' => 3,
+            'status' => ImportStatus::Completed,
+        ]);
+
+        foreach ([
+            [19, 'Example question?', ImportRowStatus::Imported, null],
+            [29, '  EXAMPLE   question? ', ImportRowStatus::Skipped, ['Duplicate question detected (already exists in Question Bank or in this file).']],
+            [40, 'Question already in bank?', ImportRowStatus::Skipped, ['Duplicate question detected before import.']],
+            [82, 'Question without answer?', ImportRowStatus::Skipped, ["Correct answer must be A, B, C, or D (got '')."]],
+        ] as [$rowNumber, $questionText, $status, $errors]) {
+            QuestionImportRow::create([
+                'import_batch_id' => $batch->id,
+                'row_number' => $rowNumber,
+                'question_text' => $questionText,
+                'status' => $status,
+                'error_messages_json' => $errors,
+            ]);
+        }
+
+        $sheet = $this->importService->generateErrorReport($batch)->getActiveSheet();
+
+        $this->assertSame('Matches Excel Row #', $sheet->getCell('F1')->getValue());
+        $this->assertSame(29, $sheet->getCell('A2')->getValue());
+        $this->assertSame(19, $sheet->getCell('F2')->getValue());
+        $this->assertSame('Example question?', $sheet->getCell('G2')->getValue());
+        $this->assertStringContainsString('Duplicate of Excel row 19', $sheet->getCell('I2')->getValue());
+        $this->assertSame('', $sheet->getCell('F3')->getValue());
+        $this->assertStringContainsString('Question Bank', $sheet->getCell('I3')->getValue());
+        $this->assertStringContainsString('Correct answer must be A, B, C, or D', $sheet->getCell('I4')->getValue());
     }
 
     public function test_can_parse_stage_and_execute_import_from_spreadsheet(): void

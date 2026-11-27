@@ -689,7 +689,7 @@ private fun QuizPage(
             item {
                 CardBlock {
                     Text(question.category + if (question.topic.isNotBlank()) "  ·  ${question.topic}" else "", color = Navy, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, lineHeight = 16.sp, letterSpacing = 0.25.sp)
-                    Text(question.prompt, color = Ink, style = MaterialTheme.typography.titleMedium, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 11.dp, bottom = 2.dp))
+                    Text(formattedQuestionPrompt(question.prompt), color = Ink, style = MaterialTheme.typography.titleMedium, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 11.dp, bottom = 2.dp))
                 }
             }
             items(choices.filter { it.second.isNotBlank() }) { (letter, value) ->
@@ -861,7 +861,7 @@ private fun ResultPage(quiz: List<LocalQuestion>, selected: Map<Int, String>, fl
                             )
                         }
                     }
-                    Text(item.prompt, color = Ink, style = MaterialTheme.typography.titleSmall, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 11.dp))
+                    Text(formattedQuestionPrompt(item.prompt), color = Ink, style = MaterialTheme.typography.titleSmall, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 11.dp))
                     HorizontalDivider(Modifier.padding(vertical = 11.dp), color = Line)
                     Text("YOUR ANSWER", color = Muted, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                     Text("${answer ?: "Unanswered"}${if (answer == null) "" else "  ·  ${choiceText(answer)}"}", color = resultColor, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, lineHeight = 21.sp, modifier = Modifier.padding(top = 3.dp))
