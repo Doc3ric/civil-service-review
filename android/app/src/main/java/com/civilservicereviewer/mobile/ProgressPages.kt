@@ -1,16 +1,22 @@
 package com.civilservicereviewer.mobile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -20,11 +26,18 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,7 +45,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private val ProgressNavy = Color(0xFF174A8B)
 private val ProgressInk = Color(0xFF1E293B)
@@ -128,12 +144,8 @@ fun ProgressPage(
                 Text("Your progress is saved on this phone and combined with web results after sync.", color = Color(0xFFE2E8F0), style = MaterialTheme.typography.bodySmall, lineHeight = 19.sp, modifier = Modifier.padding(top = 5.dp))
             }
         }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ProgressMetric("CURRENT STREAK", "${streaks.first} days", Modifier.weight(1f))
-                ProgressMetric("LONGEST STREAK", "${streaks.second} days", Modifier.weight(1f))
-            }
-        }
+        item { StudyStreakCard(streaks.first, streaks.second) }
+        item { StudyCalendar(studyDates, today) }
         item {
             ProgressCard {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -268,6 +280,100 @@ private fun ProgressMetric(label: String, value: String, modifier: Modifier = Mo
 private fun ProgressCard(modifier: Modifier = Modifier, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     Card(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
         Column(Modifier.padding(16.dp), content = content)
+    }
+}
+
+@Composable
+private fun StudyStreakCard(currentStreak: Int, longestStreak: Int) {
+    ProgressCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            AnimatedStreakIcon(Modifier.size(76.dp))
+            Column {
+                Text("CURRENT STREAK", color = ProgressMuted, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                Text("$currentStreak ${if (currentStreak == 1) "day" else "days"}", color = ProgressRed, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                Text("Longest: $longestStreak ${if (longestStreak == 1) "day" else "days"}", color = ProgressMuted, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudyCalendar(studyDates: Set<LocalDate>, today: LocalDate) {
+    var displayedMonth by rememberSaveable { mutableStateOf(YearMonth.from(today).toString()) }
+    var selectedDate by rememberSaveable { mutableStateOf<String?>(today.toString()) }
+    val month = YearMonth.parse(displayedMonth)
+    val monthStartOffset = month.atDay(1).dayOfWeek.value % 7
+    val calendarCellCount = ((monthStartOffset + month.lengthOfMonth() + 6) / 7) * 7
+    val monthStudyDays = studyDates.count { YearMonth.from(it) == month }
+    val selectedDay = selectedDate?.let(LocalDate::parse)
+
+    ProgressCard {
+        Text("Study calendar", color = ProgressInk, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text("Orange days are days you studied. Tap a date for its status.", color = ProgressMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp))
+
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            TextButton(onClick = {
+                displayedMonth = month.minusMonths(1).toString()
+                selectedDate = null
+            }, modifier = Modifier.semantics { contentDescription = "Previous month" }) { Text("‹", style = MaterialTheme.typography.headlineSmall) }
+            Text(month.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())), color = ProgressInk, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+            TextButton(onClick = {
+                displayedMonth = month.plusMonths(1).toString()
+                selectedDate = null
+            }, modifier = Modifier.semantics { contentDescription = "Next month" }) { Text("›", style = MaterialTheme.typography.headlineSmall) }
+        }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            listOf("S", "M", "T", "W", "T", "F", "S").forEach { weekday ->
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text(weekday, color = ProgressMuted, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        repeat(calendarCellCount / 7) { weekIndex ->
+            Row(Modifier.fillMaxWidth().padding(top = 3.dp)) {
+                repeat(7) { weekdayIndex ->
+                    val dayNumber = weekIndex * 7 + weekdayIndex - monthStartOffset + 1
+                    if (dayNumber in 1..month.lengthOfMonth()) {
+                        val date = month.atDay(dayNumber)
+                        val studied = date in studyDates
+                        val isSelected = selectedDay == date
+                        val borderColor = when {
+                            isSelected -> ProgressNavy
+                            date == today -> ProgressRed
+                            else -> Color.Transparent
+                        }
+                        Box(
+                            Modifier.weight(1f).aspectRatio(1f).padding(2.dp)
+                                .background(if (studied) Color(0xFFFFD38A) else Color.Transparent, CircleShape)
+                                .border(if (isSelected || date == today) 2.dp else 0.dp, borderColor, CircleShape)
+                                .clickable { selectedDate = date.toString() }
+                                .semantics { contentDescription = "${date.format(DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.getDefault()))}, ${if (studied) "studied" else "no study recorded"}" },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(dayNumber.toString(), color = ProgressInk, style = MaterialTheme.typography.bodySmall, fontWeight = if (studied || date == today) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    } else {
+                        Box(Modifier.weight(1f).aspectRatio(1f))
+                    }
+                }
+            }
+        }
+
+        Text("$monthStudyDays ${if (monthStudyDays == 1) "study day" else "study days"} this month", color = ProgressNavy, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+        Text(
+            when {
+                selectedDay == null -> "Tap a day to see its study status."
+                selectedDay in studyDates -> "${selectedDay.format(DateTimeFormatter.ofPattern("MMMM d", Locale.getDefault()))}: You studied on this day."
+                selectedDay == today -> "Today: Ready for a study session."
+                selectedDay.isAfter(today) -> "${selectedDay.format(DateTimeFormatter.ofPattern("MMMM d", Locale.getDefault()))}: Upcoming study day."
+                else -> "${selectedDay.format(DateTimeFormatter.ofPattern("MMMM d", Locale.getDefault()))}: No study recorded."
+            },
+            color = ProgressMuted,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
 }
 
